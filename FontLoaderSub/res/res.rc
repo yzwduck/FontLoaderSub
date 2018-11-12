@@ -1,0 +1,12 @@
+// we like UTF-8
+#pragma code_page(65001)
+
+// this file declares language netural resources
+
+#include <Windows.h>
+#include <CommCtrl.h>
+#include <Richedit.h>
+
+// #include "resource.h"
+
+CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "app.manifest"
