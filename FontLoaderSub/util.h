@@ -36,10 +36,12 @@ int WalkDir(const wchar_t *path,
 // String DB
 
 struct _str_db_t {
-  allocator_t alloc;
   wchar_t *buffer;
-  uint32_t size;
-  uint32_t pos;
+  size_t size;
+  size_t pos;
+  allocator_t alloc;
+  wchar_t ex_pad;
+  uint16_t pad_len;
 };
 
 typedef struct _str_db_t str_db_t;
@@ -48,19 +50,23 @@ int StrDbCreate(allocator_t *alloc, str_db_t *sb);
 
 int StrDbFree(str_db_t *sb);
 
-uint32_t StrDbTell(str_db_t *sb);
+size_t StrDbTell(str_db_t *sb);
 
-uint32_t StrDbNext(str_db_t *sb, uint32_t pos);
+size_t StrDbNext(str_db_t *sb, size_t pos);
 
-int StrDbRewind(str_db_t *sb, uint32_t pos);
+int StrDbRewind(str_db_t *sb, size_t pos);
 
-const wchar_t *StrDbGet(str_db_t *sb, uint32_t pos);
+int StrDbPreAlloc(str_db_t *sb, size_t cch);
 
-int StrDbPushU16le(str_db_t *sb, const wchar_t *str, uint32_t cch);
+const wchar_t *StrDbGet(str_db_t *sb, size_t pos);
 
-int StrDbPushU16be(str_db_t *sb, const wchar_t *str, uint32_t cch);
+int StrDbPushU16le(str_db_t *sb, const wchar_t *str, size_t cch);
 
-int StrDbIsDuplicate(str_db_t *sb, uint32_t start, uint32_t target);
+int StrDbPushU16be(str_db_t *sb, const wchar_t *str, size_t cch);
+
+int StrDbIsDuplicate(str_db_t *sb, size_t start, size_t target);
+
+int StrDbFullPath(str_db_t *sb, HANDLE handle);
 
 // plain string utils
 
@@ -68,7 +74,7 @@ wchar_t *FlStrCpyW(wchar_t *dst, const wchar_t *src);
 
 wchar_t *FlStrCpyNW(wchar_t *dst, const wchar_t *src, size_t cch);
 
-uint32_t FlStrLenW(const wchar_t *str);
+size_t FlStrLenW(const wchar_t *str);
 
 int FlStrCmpW(const wchar_t *a, const wchar_t *b);
 

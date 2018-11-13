@@ -295,6 +295,8 @@ static HRESULT CALLBACK DlgWorkProc(HWND hWnd,
   if (uNotification == TDN_TIMER) {
     DWORD r = WaitForSingleObject(c->thread, 0);
     if (r != WAIT_TIMEOUT) {
+      CloseHandle(c->thread);
+      c->thread = NULL;
       if (c->app_state == APP_DONE) {
         SendMessage(hWnd, TDM_NAVIGATE_PAGE, 0, (LPARAM)&c->dlg_done);
       } else {
