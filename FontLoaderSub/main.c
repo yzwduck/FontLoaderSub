@@ -46,6 +46,9 @@ typedef struct {
 
   const wchar_t *main_action;
   wchar_t buffer[96];
+  str_db_t root_path;
+  size_t root_pos;
+  str_db_t log;
 } app_ctx_t;
 
 static int font_name_cb(const wchar_t *font, size_t cch, void *arg) {
@@ -116,7 +119,7 @@ static int walk_cb_font(const wchar_t *full_path,
       break;
 
     size_t size = GetFileSize(h, NULL);
-    r = FontSetAdd(ctx->font_set, full_path, ptr, size);
+    r = FontSetAdd(ctx->font_set, full_path + ctx->root_pos, ptr, size);
   } while (0);
   if (ptr)
     UnmapViewOfFile(ptr);
@@ -142,18 +145,44 @@ static void AppUnloadFonts(app_ctx_t *c) {
   c->num_font_loaded = 0;
   c->num_font_failed = 0;
   c->num_font_unmatch = 0;
+  StrDbRewind(&c->log, 0);
 }
 
-static void AppChdir() {
+static void AppChdir(app_ctx_t *c) {
   WCHAR path[MAX_PATH];
   GetModuleFileName(NULL, path, MAX_PATH);
   int last = 0;
-  for (int i = 0; path[i]; i++) {
+  for (int i = 0; i < MAX_PATH && path[i]; i++) {
     if (path[i] == L'\\')
       last = i;
   }
   path[last + 1] = 0;
   SetCurrentDirectory(path);
+
+  HANDLE h;
+  int ret = FL_OS_ERROR;
+  do {
+    h = CreateFile(L".", 0, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+                   OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+    if (h == INVALID_HANDLE_VALUE)
+      break;
+    ret = StrDbFullPath(&c->root_path, h);
+    if (ret != FL_OK)
+      break;
+    c->root_path.buffer[c->root_path.pos++] = L'\\';
+    c->root_pos = StrDbTell(&c->root_path);
+    ret = FL_OK;
+  } while (0);
+
+  if (ret != FL_OK) {
+    // really bad
+    ExitProcess(1);
+
+    StrDbRewind(&c->root_path, 0);
+    StrDbPushU16le(&c->root_path, path, 0);
+    c->root_pos = last + 1;
+  }
+  CloseHandle(h);
 }
 
 static void AppUpdateStatus(app_ctx_t *c) {
@@ -204,7 +233,7 @@ static DWORD WINAPI AppWorker(LPVOID param) {
       }
       if (r != 0)
         break;
-      AppChdir();
+      AppChdir(c);
       c->app_state = APP_LOAD_CACHE;
       break;
     case APP_LOAD_CACHE:
@@ -227,7 +256,7 @@ static DWORD WINAPI AppWorker(LPVOID param) {
       r = FontSetCreate(&c->alloc, &c->font_set);
       if (r != 0)
         break;
-      r = WalkDir(L".", walk_cb_font, c, &c->alloc);
+      r = WalkDir(c->root_path.buffer, walk_cb_font, c, &c->alloc);
       if (r != 0)
         break;
       FontSetBuildIndex(c->font_set);
@@ -236,11 +265,13 @@ static DWORD WINAPI AppWorker(LPVOID param) {
       break;
     case APP_LOAD_RES:
       for (uint32_t i = 0, pos = 0; i != c->num_sub_font; i++) {
+        StrDbRewind(&c->root_path, c->root_pos);
         const wchar_t *face = StrDbGet(&c->sub_font, pos);
         pos = StrDbNext(&c->sub_font, pos);
         const wchar_t *file = FontSetLookup(c->font_set, face);
         if (file) {
-          if (0 || AddFontResource(file) != 0) {
+          if (StrDbPushU16le(&c->root_path, file, 0) == 0 &&
+              AddFontResource(file) != 0) {
             // Sleep(500);
             c->num_font_loaded++;
           } else {
@@ -354,6 +385,13 @@ int AppInit(app_ctx_t *c, HINSTANCE hInst) {
     return 2;
   c->db_path = L"fc-subs.db";
   c->app_state = APP_PARSE_ASS;
+
+  StrDbCreate(&c->alloc, &c->root_path);
+  StrDbCreate(&c->alloc, &c->log);
+  if (StrDbPreAlloc(&c->root_path, MAX_PATH) != 0)
+    return 1;
+  if (StrDbPreAlloc(&c->log, 1024) != 0)
+    return 1;
 
   AppUpdateStatus(c);
   c->dlg_work.cbSize = sizeof c->dlg_work;
