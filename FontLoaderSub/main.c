@@ -223,6 +223,23 @@ static void AppUpdateStatus(app_ctx_t *c) {
   c->main_action = cap;
 }
 
+static int CALLBACK enum_fonts(const LOGFONTW *lfp,
+                               const TEXTMETRICW *tmp,
+                               DWORD fontType,
+                               LPARAM lParam) {
+  int *r = (int *)lParam;
+  *r = 1;
+  return 1;  // continue
+}
+
+static int IsFontInstalled(const wchar_t *face) {
+  int found = 0;
+  HDC dc = GetDC(0);
+  EnumFontFamilies(dc, face, enum_fonts, (LPARAM)&found);
+  ReleaseDC(0, dc);
+  return found;
+}
+
 static DWORD WINAPI AppWorker(LPVOID param) {
   app_ctx_t *c = (app_ctx_t *)param;
   int r = 0;
@@ -269,33 +286,39 @@ static DWORD WINAPI AppWorker(LPVOID param) {
       break;
     case APP_LOAD_RES:
       for (uint32_t i = 0, pos = 0; i != c->num_sub_font; i++) {
-        StrDbRewind(&c->root_path, c->root_pos);
         const wchar_t *face = StrDbGet(&c->sub_font, pos);
         pos = StrDbNext(&c->sub_font, pos);
-        const wchar_t *file = FontSetLookup(c->font_set, face);
-        if (file) {
-          if (StrDbPushU16le(&c->root_path, file, 0) == 0 &&
-              AddFontResource(c->root_path.buffer) != 0) {
-            // Sleep(256);
-            c->num_font_loaded++;
-            StrDbPushU16le(&c->log, L"[ ok ] ", 0);
-            StrDbPushU16le(&c->log, face, 0);
-            StrDbPushU16le(&c->log, L" > ", 0);
-            StrDbPushU16le(&c->log, file, 0);
-            StrDbPushU16le(&c->log, L"\n", 0);
-          } else {
-            c->num_font_failed++;
-            StrDbPushU16le(&c->log, L"[fail] ", 0);
-            StrDbPushU16le(&c->log, face, 0);
-            StrDbPushU16le(&c->log, L" > ", 0);
-            StrDbPushU16le(&c->log, file, 0);
-            StrDbPushU16le(&c->log, L"\n", 0);
-          }
-        } else {
-          c->num_font_unmatch++;
-          StrDbPushU16le(&c->log, L"[????] ", 0);
+        if (IsFontInstalled(face)) {
+          StrDbPushU16le(&c->log, L"[ OK ] ", 0);
           StrDbPushU16le(&c->log, face, 0);
           StrDbPushU16le(&c->log, L"\n", 0);
+        } else {
+          const wchar_t *file = FontSetLookup(c->font_set, face);
+          StrDbRewind(&c->root_path, c->root_pos);
+          if (file) {
+            if (StrDbPushU16le(&c->root_path, file, 0) == 0 &&
+                AddFontResource(c->root_path.buffer) != 0) {
+              // Sleep(256);
+              c->num_font_loaded++;
+              StrDbPushU16le(&c->log, L"[ OK ] ", 0);
+              StrDbPushU16le(&c->log, face, 0);
+              StrDbPushU16le(&c->log, L" > ", 0);
+              StrDbPushU16le(&c->log, file, 0);
+              StrDbPushU16le(&c->log, L"\n", 0);
+            } else {
+              c->num_font_failed++;
+              StrDbPushU16le(&c->log, L"[fail] ", 0);
+              StrDbPushU16le(&c->log, face, 0);
+              StrDbPushU16le(&c->log, L" > ", 0);
+              StrDbPushU16le(&c->log, file, 0);
+              StrDbPushU16le(&c->log, L"\n", 0);
+            }
+          } else {
+            c->num_font_unmatch++;
+            StrDbPushU16le(&c->log, L"[????] ", 0);
+            StrDbPushU16le(&c->log, face, 0);
+            StrDbPushU16le(&c->log, L"\n", 0);
+          }
         }
         if (c->cancelled)
           break;
