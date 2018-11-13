@@ -352,11 +352,11 @@ int FontSetFree(font_set_t *set) {
   const allocator_t alloc = set->db.alloc;
   if (set->map_ptr == NULL) {
     StrDbFree(&set->db);
-    alloc.alloc(set->pair, 0, alloc.arg);
   } else {
     UnmapViewOfFile(set->map_ptr);
     CloseHandle(set->map_handle);
   }
+  alloc.alloc(set->pair, 0, alloc.arg);
   alloc.alloc(set, 0, alloc.arg);
   return FL_OK;
 }
@@ -391,8 +391,6 @@ int FontSetAdd(font_set_t *set, const wchar_t *tag, void *buffer, size_t size) {
 }
 
 int FontSetBuildIndex(font_set_t *set) {
-  if (set->map_ptr != NULL)
-    return FL_OS_ERROR;
   allocator_t *alloc = &set->db.alloc;
   if (set->stat.num_faces == 0) {
     // no font face to index
@@ -406,18 +404,25 @@ int FontSetBuildIndex(font_set_t *set) {
   if (p == NULL)
     return FL_OUT_OF_MEMORY;
   set->pair = p;
+
+  // reset counter
+  uint32_t max_faces = set->stat.num_faces;
+  set->stat.num_files = 0;
+  set->stat.num_faces = 0;
+
   // iter through data
   wchar_t *buf = set->db.buffer;
   uint32_t pos = 0;
   uint32_t i = 0;
-  while (pos < set->db.pos) {
+  while (pos < set->db.pos && set->stat.num_faces < max_faces) {
     const uint32_t pos_f = pos;
     // wprintf(L"%s\n", &buf[pos]);
+    set->stat.num_files++;
     pos = StrDbNext(&set->db, pos);
-    int tc = 0;
-    while (pos < set->db.pos && buf[pos] != 0) {
-      tc++;
+    while (pos < set->db.pos && buf[pos] != 0 &&
+           set->stat.num_faces < max_faces) {
       // wprintf(L"  %d.%s\n", tc, &buf[pos]);
+      set->stat.num_faces++;
       p[i].face = pos;
       p[i].tag = pos_f;
       i++;
@@ -426,6 +431,9 @@ int FontSetBuildIndex(font_set_t *set) {
     pos = StrDbNext(&set->db, pos);
     // wprintf(L"  %d added\n", tc);
   }
+  if (set->stat.num_faces != max_faces)
+    return FL_CORRUPTED;
+
   // FontSetQSort(p, buf, 0, i - 1);
   FontSetTimSort(p, buf, i, alloc);
 
@@ -434,7 +442,7 @@ int FontSetBuildIndex(font_set_t *set) {
   // for (uint32_t i = 0; i < r->stat.num_faces * 0; i++) {
   //   wprintf(L"%s\n", StrDbGet(&r->db, r->pair[i].face));
   // }
-  return 0;
+  return FL_OK;
 }
 
 const wchar_t *FontSetLookup(font_set_t *set, const wchar_t *face) {
@@ -486,7 +494,7 @@ int FontSetLoad(const wchar_t *path, allocator_t *alloc, font_set_t **out) {
     if (head[0] != FONT_DB_TAG_MAGIC)
       break;
     // check file size
-    if (size != head[3] + head[2] * sizeof(*out)->pair[0])
+    if (size != head[3])
       break;
     // check NUL exists
     if (head[3] < 8)
@@ -498,13 +506,16 @@ int FontSetLoad(const wchar_t *path, allocator_t *alloc, font_set_t **out) {
     if (FontSetCreate(alloc, &r) != FL_OK)
       break;
 
+    r->db.buffer = (wchar_t *)(head + 4);
+    r->db.pos = (head[3] - 16) / 2;
+    r->stat.num_faces = head[2];
+    if (FontSetBuildIndex(r) != FL_OK)
+      break;
+
     // all green
     r->map_ptr = ptr;
     r->map_handle = hm;
-    r->stat.num_files = head[1];
-    r->stat.num_faces = head[2];
-    r->pair = (font_pair_t *)(ptr + head[3]);
-    r->db.buffer = (wchar_t *)(head + 4);
+    // r->pair = (font_pair_t *)(ptr + head[3]);
     *out = r;
     succ = 1;
     // wprintf(L"from cache %d face, %d file\n", r->stat.num_faces,
@@ -530,20 +541,11 @@ int FontSetDump(font_set_t *set, const wchar_t *path) {
     uint32_t head[4] = {FONT_DB_TAG_MAGIC, set->stat.num_files,
                         set->stat.num_faces};
     head[3] = sizeof head + set->db.pos * sizeof set->db.buffer[0];
-    const int extra_space = (head[3] % 8 != 0) ? (8 - head[3] % 8) : 0;
-    head[3] += extra_space;
+
     DWORD dw_out;
     if (!WriteFile(h, head, sizeof head, &dw_out, NULL))
       break;
     if (!WriteFile(h, set->db.buffer, set->db.pos * sizeof set->db.buffer[0],
-                   &dw_out, NULL))
-      break;
-    static const char empty_bytes[8] = {0};
-    if (extra_space) {
-      if (!WriteFile(h, empty_bytes, extra_space, &dw_out, NULL))
-        break;
-    }
-    if (!WriteFile(h, set->pair, set->stat.num_faces * sizeof set->pair[0],
                    &dw_out, NULL))
       break;
     succ = 1;

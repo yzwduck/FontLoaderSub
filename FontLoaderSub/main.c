@@ -169,7 +169,10 @@ static void AppChdir(app_ctx_t *c) {
     ret = StrDbFullPath(&c->root_path, h);
     if (ret != FL_OK)
       break;
-    c->root_path.buffer[c->root_path.pos++] = L'\\';
+    str_db_t *sb = &c->root_path;
+    if (sb->buffer[sb->pos - 1] != L'\\') {
+      sb->buffer[sb->pos++] = L'\\';
+    }
     c->root_pos = StrDbTell(&c->root_path);
     ret = FL_OK;
   } while (0);
@@ -256,6 +259,7 @@ static DWORD WINAPI AppWorker(LPVOID param) {
       r = FontSetCreate(&c->alloc, &c->font_set);
       if (r != 0)
         break;
+      StrDbRewind(&c->root_path, c->root_pos);
       r = WalkDir(c->root_path.buffer, walk_cb_font, c, &c->alloc);
       if (r != 0)
         break;
@@ -271,14 +275,27 @@ static DWORD WINAPI AppWorker(LPVOID param) {
         const wchar_t *file = FontSetLookup(c->font_set, face);
         if (file) {
           if (StrDbPushU16le(&c->root_path, file, 0) == 0 &&
-              AddFontResource(file) != 0) {
-            // Sleep(500);
+              AddFontResource(c->root_path.buffer) != 0) {
+            // Sleep(256);
             c->num_font_loaded++;
+            StrDbPushU16le(&c->log, L"[ ok ] ", 0);
+            StrDbPushU16le(&c->log, face, 0);
+            StrDbPushU16le(&c->log, L" > ", 0);
+            StrDbPushU16le(&c->log, file, 0);
+            StrDbPushU16le(&c->log, L"\n", 0);
           } else {
             c->num_font_failed++;
+            StrDbPushU16le(&c->log, L"[fail] ", 0);
+            StrDbPushU16le(&c->log, face, 0);
+            StrDbPushU16le(&c->log, L" > ", 0);
+            StrDbPushU16le(&c->log, file, 0);
+            StrDbPushU16le(&c->log, L"\n", 0);
           }
         } else {
           c->num_font_unmatch++;
+          StrDbPushU16le(&c->log, L"[????] ", 0);
+          StrDbPushU16le(&c->log, face, 0);
+          StrDbPushU16le(&c->log, L"\n", 0);
         }
         if (c->cancelled)
           break;
@@ -329,6 +346,13 @@ static HRESULT CALLBACK DlgWorkProc(HWND hWnd,
       CloseHandle(c->thread);
       c->thread = NULL;
       if (c->app_state == APP_DONE) {
+        if (StrDbTell(&c->log) != 0) {
+          size_t pos = StrDbTell(&c->log);
+          StrDbRewind(&c->log, pos - 1);
+          c->dlg_done.pszExpandedInformation = StrDbGet(&c->log, 0);
+        } else {
+          c->dlg_done.pszExpandedInformation = NULL;
+        }
         SendMessage(hWnd, TDM_NAVIGATE_PAGE, 0, (LPARAM)&c->dlg_done);
       } else {
         PostMessage(hWnd, WM_CLOSE, 0, 0);
@@ -388,6 +412,8 @@ int AppInit(app_ctx_t *c, HINSTANCE hInst) {
 
   StrDbCreate(&c->alloc, &c->root_path);
   StrDbCreate(&c->alloc, &c->log);
+  c->root_path.pad_len = 0;
+  c->log.pad_len = 0;
   if (StrDbPreAlloc(&c->root_path, MAX_PATH) != 0)
     return 1;
   if (StrDbPreAlloc(&c->log, 1024) != 0)
@@ -396,6 +422,7 @@ int AppInit(app_ctx_t *c, HINSTANCE hInst) {
   AppUpdateStatus(c);
   c->dlg_work.cbSize = sizeof c->dlg_work;
   c->dlg_work.hInstance = hInst;
+  c->dlg_work.pszWindowTitle = L"FontLoaderSub r2";
   c->dlg_work.dwCommonButtons = TDCBF_CANCEL_BUTTON;
   c->dlg_work.lpCallbackData = (LONG_PTR)c;
   c->dlg_work.pfCallback = DlgWorkProc;
@@ -405,11 +432,12 @@ int AppInit(app_ctx_t *c, HINSTANCE hInst) {
 
   c->dlg_done.cbSize = sizeof c->dlg_done;
   c->dlg_done.hInstance = hInst;
+  c->dlg_done.pszWindowTitle = c->dlg_work.pszWindowTitle;
   c->dlg_done.dwCommonButtons =
       TDCBF_CLOSE_BUTTON | TDCBF_RETRY_BUTTON | TDCBF_OK_BUTTON;
   c->dlg_done.lpCallbackData = (LONG_PTR)c;
   c->dlg_done.pfCallback = DlgDoneProc;
-  c->dlg_done.dwFlags |= TDF_CAN_BE_MINIMIZED;
+  c->dlg_done.dwFlags |= TDF_CAN_BE_MINIMIZED | TDF_EXPAND_FOOTER_AREA;
   c->dlg_done.pszMainInstruction = L"Done";
   c->dlg_done.pszContent = c->buffer;
 
@@ -499,6 +527,7 @@ int WINAPI _tWinMain(HINSTANCE hInstance,
                      LPTSTR lpCmdLine,
                      int nCmdShow) {
   PerMonitorDpiHack();
+  // MessageBox(NULL, L"break", L"break", 0);
   app_ctx_t *c = &g_ctx;
   int r = AppInit(c, hInstance);
   if (r == 0)

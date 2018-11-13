@@ -101,7 +101,8 @@ int WalkDir(const wchar_t *path,
       ret = callback(ctx.sb_path.buffer, &emu, arg);
     } else {
       // normal recursive dir routine
-      ctx.sb_path.buffer[ctx.sb_path.pos++] = L'\\';
+      if (ctx.sb_path.buffer[ctx.sb_path.pos - 1] != L'\\')
+        ctx.sb_path.buffer[ctx.sb_path.pos++] = L'\\';
       ctx.sb_path.buffer[ctx.sb_path.pos++] = L'*';
       ctx.sb_path.buffer[ctx.sb_path.pos] = 0;
       ret = WalkDirDfs(&ctx);
