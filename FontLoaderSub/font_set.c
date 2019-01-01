@@ -9,11 +9,13 @@
   ((uint32_t)(((uint8_t)(d) << 24)) | (uint32_t)(((uint8_t)(c) << 16)) | \
    (uint32_t)(((uint8_t)(b) << 8)) | (uint32_t)(((uint8_t)(a))))
 
+#define kTagVersion L"\tv:"
+
 typedef enum FONT_TAG {
   FONT_TAG_TTCF = MAKE_TAG('t', 't', 'c', 'f'),
   FONT_TAG_OTTO = MAKE_TAG('O', 'T', 'T', 'O'),
   FONT_TAG_NAME = MAKE_TAG('n', 'a', 'm', 'e'),
-  FONT_DB_TAG_MAGIC = MAKE_TAG('f', 'l', 'd', 'b')
+  FONT_DB_TAG_MAGIC = MAKE_TAG('f', 'l', 'd', 'c')
 } FONT_TAG;
 
 typedef struct {
@@ -117,13 +119,32 @@ static int FontParseTableName(const char *buffer,
   const uint16_t count = be16(head->count);
   const char *str_buffer = buffer + be16(head->offset);
   otf_name_record_t *records = (otf_name_record_t *)(head + 1);
-  // another range check
+
+  // range check for records
   if (buffer + sizeof *head + count * sizeof records[0] > eos)
     return FL_CORRUPTED;
-  if (str_buffer > eos)
-    return FL_CORRUPTED;
+  // range check for all strings
+  for (uint16_t i = 0; i != count; i++) {
+    otf_name_record_t *r = &records[i];
+    if (str_buffer + be16(r->offset) + be16(r->length) > eos)
+      return FL_CORRUPTED;
+  }
 
   int ret = 0;
+
+  // loop & callback for Version
+  for (uint16_t i = 0; i != count; i++) {
+    otf_name_record_t *r = &records[i];
+    // filter version string (name_id == 5)
+    if (r->name_id == be16(5) && r->platform == be16(OTF_PLATFORM_WINDOWS)) {
+      wchar_t *str_be = (wchar_t *)(str_buffer + be16(r->offset));
+      // fire callback
+      ret = cb(r, str_be, arg);
+      if (ret != FL_OK)
+        return ret;
+    }
+  }
+
   // loop & callback for each record
   for (uint16_t i = 0; i != count; i++) {
     otf_name_record_t *r = &records[i];
@@ -131,9 +152,6 @@ static int FontParseTableName(const char *buffer,
     if (IsInterestedNameId(be16(r->name_id)) &&
         r->platform == be16(OTF_PLATFORM_WINDOWS)) {
       wchar_t *str_be = (wchar_t *)(str_buffer + be16(r->offset));
-      // range check for string
-      if (str_buffer + be16(r->offset) + be16(r->length) > eos)
-        return FL_CORRUPTED;
       // fire callback
       ret = cb(r, str_be, arg);
       if (ret != FL_OK)
@@ -206,7 +224,33 @@ typedef struct {
   str_db_t *db;
   uint32_t start;
   int count;
+  uint16_t last_lang_id;
 } font_file_parse_t;
+
+static int FontNameVersionCb(otf_name_record_t *rec,
+                             wchar_t *str_be,
+                             uint32_t cch,
+                             font_file_parse_t *c) {
+  int r;
+
+  if (rec->name_id != be16(5)) {
+    if (c->last_lang_id != 0) {
+      // version locked
+      c->start = StrDbTell(c->db);
+      c->last_lang_id = 0;
+    }
+    return 0;
+  }
+  // version found
+  if (c->last_lang_id == 0 || rec->lang_id == be16(0x0409)) {
+    if (c->last_lang_id != 0)
+      StrDbRewind(c->db, c->start);
+    c->last_lang_id = rec->lang_id;
+    StrDbPushPrefix(c->db, kTagVersion, 3);
+    StrDbPushU16be(c->db, str_be, cch);
+  }
+  return 1;
+}
 
 static int FontNameCb2(otf_name_record_t *rec, void *str_buf, void *arg) {
   int r;
@@ -215,14 +259,17 @@ static int FontNameCb2(otf_name_record_t *rec, void *str_buf, void *arg) {
   wchar_t *str_be = (wchar_t *)str_buf;
   uint32_t cch = be16(rec->length) / sizeof(str_be[0]);
   if (cch > 0) {
+    if (FontNameVersionCb(rec, str_be, cch, c))
+      return FL_OK;
     r = StrDbPushU16be(c->db, str_be, cch);
     if (r != FL_OK)
       return r;
+
+    wchar_t *utf16 = &c->db->buffer[pos];
     if (StrDbIsDuplicate(c->db, c->start, pos)) {
       StrDbRewind(c->db, pos);
     } else {
       // ok
-      wchar_t *utf16 = &c->db->buffer[pos];
       c->count++;
       // wprintf(L"  %d.%s\n", c->count, utf16);
       int stop = 0;
@@ -234,7 +281,27 @@ static int FontNameCb2(otf_name_record_t *rec, void *str_buf, void *arg) {
 typedef struct {
   uint32_t face;
   uint32_t tag;
+  uint32_t ver;
 } font_pair_t;
+
+static int FontPairCmp(wchar_t *base, font_pair_t *a, font_pair_t *b) {
+  const wchar_t *face_a = base + a->face;
+  const wchar_t *face_b = base + b->face;
+  int cmp = FlStrCmpIW(face_a, face_b);
+
+  if (cmp == 0) {
+    if (b->ver == (uint32_t)-1)
+      cmp = 1;
+    else if (a->ver == (uint32_t)-1)
+      cmp = -1;
+    else {
+      const wchar_t *ver_a = base + a->ver;
+      const wchar_t *ver_b = base + b->ver;
+      cmp = FlVersionCmp(ver_a, ver_b);
+    }
+  }
+  return cmp;
+}
 
 static void FontSetQSort(font_pair_t *p, wchar_t *base, int low, int high) {
   if (low >= high)
@@ -264,7 +331,8 @@ static void FontSetSelectSort(font_pair_t *p,
   for (uint32_t i = low; i < high; i++) {
     uint32_t m = i;
     for (uint32_t j = i + 1; j != high; j++) {
-      if (FlStrCmpIW(base + p[m].face, base + p[j].face) > 0)
+      if (FontPairCmp(base, &p[m], &p[j]) > 0)
+        // if (FlStrCmpIW(base + p[m].face, base + p[j].face) > 0)
         m = j;
     }
     if (m != i) {
@@ -299,7 +367,8 @@ static void FontSetTimSortI(font_pair_t *p,
   while (a < mid && b < high) {
     const wchar_t *sa = base + ex[a].face;
     const wchar_t *sb = base + ex[b].face;
-    if (FlStrCmpIW(base + ex[a].face, base + ex[b].face) <= 0) {
+    if (FontPairCmp(base, &ex[a], &ex[b]) <= 0) {
+      // if (FlStrCmpIW(base + ex[a].face, base + ex[b].face) <= 0) {
       p[t++] = ex[a++];
     } else {
       p[t++] = ex[b++];
@@ -416,16 +485,23 @@ int FontSetBuildIndex(font_set_t *set) {
   uint32_t i = 0;
   while (pos < set->db.pos && set->stat.num_faces < max_faces) {
     const uint32_t pos_f = pos;
+    uint32_t pos_v = (uint32_t)-1;
     // wprintf(L"%s\n", &buf[pos]);
     set->stat.num_files++;
     pos = StrDbNext(&set->db, pos);
     while (pos < set->db.pos && buf[pos] != 0 &&
            set->stat.num_faces < max_faces) {
       // wprintf(L"  %d.%s\n", tc, &buf[pos]);
-      set->stat.num_faces++;
-      p[i].face = pos;
-      p[i].tag = pos_f;
-      i++;
+      if (buf[pos] == kTagVersion[0] && buf[pos + 1] == kTagVersion[1] &&
+          buf[pos + 2] == kTagVersion[2]) {
+        pos_v = pos + 3;
+      } else {
+        set->stat.num_faces++;
+        p[i].face = pos;
+        p[i].tag = pos_f;
+        p[i].ver = pos_v;
+        i++;
+      }
       pos = StrDbNext(&set->db, pos);
     }
     pos = StrDbNext(&set->db, pos);
@@ -439,9 +515,17 @@ int FontSetBuildIndex(font_set_t *set) {
 
   // debug
   font_set_t *r = set;
-  // for (uint32_t i = 0; i < r->stat.num_faces * 0; i++) {
-  //   wprintf(L"%s\n", StrDbGet(&r->db, r->pair[i].face));
-  // }
+  for (uint32_t i = 0; i < r->stat.num_faces * 0; i++) {
+    const wchar_t *font = StrDbGet(&r->db, r->pair[i].face);
+    if (r->pair[i].ver == (uint32_t)-1) {
+      int stop = 0;
+    } else {
+      const wchar_t *ver = StrDbGet(&r->db, r->pair[i].ver) + 3;
+      int stop = 0;
+    }
+    int stop = 0;
+    //   wprintf(L"%s\n", StrDbGet(&r->db, r->pair[i].face));
+  }
   return FL_OK;
 }
 
@@ -454,10 +538,16 @@ const wchar_t *FontSetLookup(font_set_t *set, const wchar_t *face) {
     face++;
   while (a <= b) {
     int m = (a + b) / 2;
-    int t = FlStrCmpIW(face, set->db.buffer + set->pair[m].face);
-    if (t == 0)
-      return set->db.buffer + set->pair[m].tag;
-    if (t > 0) {
+    const wchar_t *got = StrDbGet(&set->db, set->pair[m].face);
+    int t = FlStrCmpIW(face, got);
+    if (t == 0) {
+      // find the latest
+      while (m + 1 != set->stat.num_faces &&
+             FlStrCmpIW(face, StrDbGet(&set->db, set->pair[m + 1].face)) == 0) {
+        m++;
+      }
+      return StrDbGet(&set->db, set->pair[m].tag);
+    } else if (t > 0) {
       a = m + 1;
     } else {
       b = m - 1;

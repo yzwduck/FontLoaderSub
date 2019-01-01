@@ -62,6 +62,8 @@ const wchar_t *StrDbGet(str_db_t *sb, size_t pos);
 
 int StrDbPushU16le(str_db_t *sb, const wchar_t *str, size_t cch);
 
+int StrDbPushPrefix(str_db_t *sb, const wchar_t *str, size_t cch);
+
 int StrDbPushU16be(str_db_t *sb, const wchar_t *str, size_t cch);
 
 int StrDbIsDuplicate(str_db_t *sb, size_t start, size_t target);
@@ -95,5 +97,8 @@ enum FL_STATUS {
   FL_UNRECOGNIZED = 3,
   FL_CORRUPTED = 4,
 };
+
+// compare two version string
+int FlVersionCmp(const wchar_t *a, const wchar_t *b);
 
 #endif

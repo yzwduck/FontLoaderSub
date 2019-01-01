@@ -177,15 +177,18 @@ int StrDbPreAlloc(str_db_t *sb, size_t cch) {
 }
 
 int StrDbPushU16le(str_db_t *sb, const wchar_t *str, size_t cch) {
+  // count chars
   const size_t original_cch = cch;
   if (cch == 0)
     cch = FlStrLenW(str);
   while (cch > 0 && str[cch - 1] == 0)
     cch--;
   if (cch == 0 && original_cch != 0) {
-    // WARN: not insert empty string, unless acknowledged
+    // WARN: not insert empty string, unless specifying cch=1
     return FL_OK;
   }
+
+  // allocate memory and copy string
   int r = StrDbPreAlloc(sb, cch + 2);
   if (r != FL_OK)
     return r;
@@ -197,6 +200,15 @@ int StrDbPushU16le(str_db_t *sb, const wchar_t *str, size_t cch) {
   buf[cch + 1] = sb->ex_pad;
   sb->pos += cch + sb->pad_len;
   return FL_OK;
+}
+
+int StrDbPushPrefix(str_db_t *sb, const wchar_t *str, size_t cch) {
+  int r = StrDbPushU16le(sb, str, cch);
+  if (r == FL_OK && str[0]) {
+    // rewind pad_len
+    sb->pos -= sb->pad_len;
+  }
+  return r;
 }
 
 int StrDbPushU16be(str_db_t *sb, const wchar_t *str, size_t cch) {
@@ -282,4 +294,66 @@ int FlStrCmpNIW(const wchar_t *a, const wchar_t *b, size_t len) {
 
 wchar_t *FlStrChrNW(const wchar_t *s, wchar_t ch, size_t len) {
   return StrChrNW(s, ch, (UINT)len);
+}
+
+static int is_digit(wchar_t ch) {
+  if (L'0' <= ch && ch <= L'9')
+    return ch - L'0';
+  else
+    return -1;
+}
+
+int FlVersionCmp(const wchar_t *a, const wchar_t *b) {
+  const wchar_t *ptr_a = a, *ptr_b = b;
+  int cmp = 0;
+
+  while (*ptr_a && *ptr_b && cmp == 0) {
+    if (is_digit(*ptr_a) >= 0 && is_digit(*ptr_b) >= 0) {
+      // seek to the end of digits
+      const wchar_t *start_a = ptr_a, *start_b = ptr_b;
+      while (is_digit(*ptr_a) >= 0)
+        ptr_a++;
+      while (is_digit(*ptr_b) >= 0)
+        ptr_b++;
+      // compare from right to left
+      const wchar_t *dig_a = ptr_a, *dig_b = ptr_b;
+      while (dig_a != start_a && dig_b != start_b) {
+        dig_a--;
+        dig_b--;
+        if (*dig_a > *dig_b) {
+          cmp = 1;
+        } else if (*dig_a < *dig_b) {
+          cmp = -1;
+        }
+      }
+      // leading zero
+      while (dig_a != start_a && dig_a[-1] == L'0') {
+        dig_a--;
+      }
+      while (dig_b != start_b && dig_b[-1] == L'0') {
+        dig_b--;
+      }
+      if (dig_a != start_a) {
+        cmp = 1;
+      } else if (dig_b != start_b) {
+        cmp = -1;
+      }
+    } else if (*ptr_a > *ptr_b) {
+      cmp = 1;
+    } else if (*ptr_a < *ptr_b) {
+      cmp = -1;
+    } else {
+      ptr_a++;
+      ptr_b++;
+    }
+  }
+
+  if (cmp == 0) {
+    if (*ptr_a)
+      cmp = 1;
+    else if (*ptr_b)
+      cmp = -1;
+  }
+
+  return cmp;
 }

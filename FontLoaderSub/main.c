@@ -2,9 +2,20 @@
 #include <CommCtrl.h>
 #include <stdint.h>
 #include <tchar.h>
+#include <assert.h>
 
 #include "font_set.h"
 #include "ssa_parser.h"
+
+#if 0
+#define MOCK_FAKE_LOAD 1
+#define MOCK_FONT_DIR L"C:\\path_to_fonts"
+#define MOCK_SUBS_DIR L"C:\\path_to_subs"
+#else
+#define MOCK_FAKE_LOAD 0
+#define MOCK_FONT_DIR NULL
+#define MOCK_SUBS_DIR NULL
+#endif
 
 enum APP_STATE {
   APP_IDLE = 0,
@@ -158,6 +169,8 @@ static void AppChdir(app_ctx_t *c) {
   }
   path[last + 1] = 0;
   SetCurrentDirectory(path);
+  if (MOCK_FONT_DIR)
+    SetCurrentDirectory(MOCK_FONT_DIR);
 
   HANDLE h;
   int ret = FL_OS_ERROR;
@@ -253,6 +266,8 @@ static DWORD WINAPI AppWorker(LPVOID param) {
       }
       if (r != 0)
         break;
+      if (MOCK_SUBS_DIR)
+        WalkDir(MOCK_SUBS_DIR, walk_cb_sub, c, &c->alloc);
       AppChdir(c);
       c->app_state = APP_LOAD_CACHE;
       break;
@@ -289,25 +304,25 @@ static DWORD WINAPI AppWorker(LPVOID param) {
         const wchar_t *face = StrDbGet(&c->sub_font, pos);
         pos = StrDbNext(&c->sub_font, pos);
         if (IsFontInstalled(face)) {
-          StrDbPushU16le(&c->log, L"[ OK ] ", 0);
+          StrDbPushU16le(&c->log, L"[ok] ", 0);
           StrDbPushU16le(&c->log, face, 0);
           StrDbPushU16le(&c->log, L"\n", 0);
         } else {
           const wchar_t *file = FontSetLookup(c->font_set, face);
           StrDbRewind(&c->root_path, c->root_pos);
           if (file) {
-            if (StrDbPushU16le(&c->root_path, file, 0) == 0 &&
-                AddFontResource(c->root_path.buffer) != 0) {
-              // Sleep(256);
+            if (MOCK_FAKE_LOAD ||
+                StrDbPushU16le(&c->root_path, file, 0) == 0 &&
+                    AddFontResource(c->root_path.buffer) != 0) {
               c->num_font_loaded++;
-              StrDbPushU16le(&c->log, L"[ OK ] ", 0);
+              StrDbPushU16le(&c->log, L"[ok] ", 0);
               StrDbPushU16le(&c->log, face, 0);
               StrDbPushU16le(&c->log, L" > ", 0);
               StrDbPushU16le(&c->log, file, 0);
               StrDbPushU16le(&c->log, L"\n", 0);
             } else {
               c->num_font_failed++;
-              StrDbPushU16le(&c->log, L"[fail] ", 0);
+              StrDbPushU16le(&c->log, L"[XX] ", 0);
               StrDbPushU16le(&c->log, face, 0);
               StrDbPushU16le(&c->log, L" > ", 0);
               StrDbPushU16le(&c->log, file, 0);
@@ -315,7 +330,7 @@ static DWORD WINAPI AppWorker(LPVOID param) {
             }
           } else {
             c->num_font_unmatch++;
-            StrDbPushU16le(&c->log, L"[????] ", 0);
+            StrDbPushU16le(&c->log, L"[=?] ", 0);
             StrDbPushU16le(&c->log, face, 0);
             StrDbPushU16le(&c->log, L"\n", 0);
           }
@@ -463,6 +478,8 @@ int AppInit(app_ctx_t *c, HINSTANCE hInst) {
   c->dlg_done.dwFlags |= TDF_CAN_BE_MINIMIZED | TDF_EXPAND_FOOTER_AREA;
   c->dlg_done.pszMainInstruction = L"Done";
   c->dlg_done.pszContent = c->buffer;
+  c->dlg_done.cxWidth = 256;
+  c->dlg_done.pszFooter = L"GPLv2: balabala";
 
   StrDbCreate(&c->alloc, &c->sub_font);
 
@@ -543,12 +560,25 @@ BOOL PerMonitorDpiHack() {
   return 0;
 }
 
+void test_version() {
+#if 0
+  assert(FlVersionCmp(L"version", L"version") == 0);
+  assert(FlVersionCmp(L"12345678901234567890", L"12345678901234567890") == 0);
+  assert(FlVersionCmp(L"1.900", L"1.199") == 1);
+  assert(FlVersionCmp(L"1.9", L"1.19") == -1);
+  assert(FlVersionCmp(L"1.09", L"1.9") == 0);
+  assert(FlVersionCmp(L"Version 1.004;PS 1.004;hotconv 1.0.82;makeotf.lib2.5.63406 ", L"Version 2.000;hotconv 1.0.107;makeotfexe 2.5.65593") == -1);
+#endif
+}
+
 app_ctx_t g_ctx;
 
 int WINAPI _tWinMain(HINSTANCE hInstance,
                      HINSTANCE hPrevInstance,
                      LPTSTR lpCmdLine,
                      int nCmdShow) {
+  test_version();
+
   PerMonitorDpiHack();
   // MessageBox(NULL, L"break", L"break", 0);
   app_ctx_t *c = &g_ctx;
