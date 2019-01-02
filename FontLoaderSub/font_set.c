@@ -231,8 +231,6 @@ static int FontNameVersionCb(otf_name_record_t *rec,
                              wchar_t *str_be,
                              uint32_t cch,
                              font_file_parse_t *c) {
-  int r;
-
   if (rec->name_id != be16(5)) {
     if (c->last_lang_id != 0) {
       // version locked
@@ -245,6 +243,8 @@ static int FontNameVersionCb(otf_name_record_t *rec,
   if (c->last_lang_id == 0 || rec->lang_id == be16(0x0409)) {
     if (c->last_lang_id != 0)
       StrDbRewind(c->db, c->start);
+    else
+      c->start = StrDbTell(c->db);
     c->last_lang_id = rec->lang_id;
     StrDbPushPrefix(c->db, kTagVersion, 3);
     StrDbPushU16be(c->db, str_be, cch);
@@ -475,7 +475,7 @@ int FontSetBuildIndex(font_set_t *set) {
   set->pair = p;
 
   // reset counter
-  uint32_t max_faces = set->stat.num_faces;
+  uint32_t expect_faces = set->stat.num_faces;
   set->stat.num_files = 0;
   set->stat.num_faces = 0;
 
@@ -483,14 +483,17 @@ int FontSetBuildIndex(font_set_t *set) {
   wchar_t *buf = set->db.buffer;
   uint32_t pos = 0;
   uint32_t i = 0;
-  while (pos < set->db.pos && set->stat.num_faces < max_faces) {
+  while (pos < set->db.pos && set->stat.num_faces < expect_faces) {
     const uint32_t pos_f = pos;
     uint32_t pos_v = (uint32_t)-1;
+    const wchar_t *str_filename = &buf[pos];
     // wprintf(L"%s\n", &buf[pos]);
     set->stat.num_files++;
+
     pos = StrDbNext(&set->db, pos);
     while (pos < set->db.pos && buf[pos] != 0 &&
-           set->stat.num_faces < max_faces) {
+           set->stat.num_faces < expect_faces) {
+      const wchar_t *str_line = &buf[pos];
       // wprintf(L"  %d.%s\n", tc, &buf[pos]);
       if (buf[pos] == kTagVersion[0] && buf[pos + 1] == kTagVersion[1] &&
           buf[pos + 2] == kTagVersion[2]) {
@@ -507,7 +510,7 @@ int FontSetBuildIndex(font_set_t *set) {
     pos = StrDbNext(&set->db, pos);
     // wprintf(L"  %d added\n", tc);
   }
-  if (set->stat.num_faces != max_faces)
+  if (set->stat.num_faces != expect_faces)
     return FL_CORRUPTED;
 
   // FontSetQSort(p, buf, 0, i - 1);

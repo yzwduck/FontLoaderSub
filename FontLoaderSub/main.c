@@ -7,6 +7,8 @@
 #include "font_set.h"
 #include "ssa_parser.h"
 
+#define kAppTitle L"FontLoaderSub r3"
+
 #if 0
 #define MOCK_FAKE_LOAD 1
 #define MOCK_FONT_DIR L"C:\\path_to_fonts"
@@ -62,12 +64,17 @@ typedef struct {
   str_db_t log;
 } app_ctx_t;
 
+// callback for saving font names in subtitles
 static int font_name_cb(const wchar_t *font, size_t cch, void *arg) {
   app_ctx_t *ctx = (app_ctx_t *)arg;
+
   if (font[0] == L'@') {
+    // skip the '@' char
     font++;
     cch--;
   }
+
+  // add font to the set
   str_db_t *sb = &ctx->sub_font;
   uint32_t pos = StrDbTell(sb);
   StrDbPushU16le(sb, font, cch);
@@ -80,6 +87,7 @@ static int font_name_cb(const wchar_t *font, size_t cch, void *arg) {
   return 0;
 }
 
+// callback for searching subtitle files
 static int walk_cb_sub(const wchar_t *full_path,
                        WIN32_FIND_DATA *data,
                        void *arg) {
@@ -97,15 +105,19 @@ static int walk_cb_sub(const wchar_t *full_path,
   wchar_t *txt = NULL;
   size_t cch;
   do {
+    // load subtitle and parse fonts
     txt = TextFileFromPath(full_path, &cch, &ctx->alloc);
     if (txt == NULL)
       break;
     AssParseFont(txt, cch, font_name_cb, arg);
   } while (0);
+
+  // free the memory
   ctx->alloc.alloc(txt, 0, ctx->alloc.arg);
   return 0;
 }
 
+// callback for searching font files
 static int walk_cb_font(const wchar_t *full_path,
                         WIN32_FIND_DATA *data,
                         void *arg) {
@@ -115,9 +127,16 @@ static int walk_cb_font(const wchar_t *full_path,
   if (ctx->cancelled)
     return 1;
 
+  int ext_font = FlStrCmpIW(eos - 4, L".ttc") == 0 ||
+                 FlStrCmpIW(eos - 4, L".ttf") == 0 ||
+                 FlStrCmpIW(eos - 4, L".otf") == 0;
+  if (!ext_font)
+    return 0;
+
   HANDLE h = INVALID_HANDLE_VALUE, hm = INVALID_HANDLE_VALUE;
   void *ptr = NULL;
   do {
+    // memory map view for the font
     h = CreateFile(full_path, GENERIC_READ, FILE_SHARE_READ, NULL,
                    OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (h == INVALID_HANDLE_VALUE)
@@ -129,15 +148,55 @@ static int walk_cb_font(const wchar_t *full_path,
     if (ptr == NULL)
       break;
 
+    // feed into font analyzer
     size_t size = GetFileSize(h, NULL);
     r = FontSetAdd(ctx->font_set, full_path + ctx->root_pos, ptr, size);
   } while (0);
+
+  // clean up
   if (ptr)
     UnmapViewOfFile(ptr);
   CloseHandle(hm);
   CloseHandle(h);
 
   return 0;
+}
+
+int IsFontInstalled(const wchar_t *face);
+
+static void AppLoadFont(app_ctx_t *c, const wchar_t *face) {
+  if (IsFontInstalled(face)) {
+    StrDbPushU16le(&c->log, L"[ok] ", 0);
+    StrDbPushU16le(&c->log, face, 0);
+    StrDbPushU16le(&c->log, L"\n", 0);
+  } else {
+    const wchar_t *file = FontSetLookup(c->font_set, face);
+    StrDbRewind(&c->root_path, c->root_pos);
+    if (file) {
+      if (MOCK_FAKE_LOAD || StrDbPushU16le(&c->root_path, file, 0) == 0 &&
+                                AddFontResource(c->root_path.buffer) != 0) {
+        c->num_font_loaded++;
+        StrDbPushU16le(&c->log, L"[ok] ", 0);
+        StrDbPushU16le(&c->log, face, 0);
+        StrDbPushU16le(&c->log, L" > ", 0);
+        StrDbPushU16le(&c->log, file, 0);
+        StrDbPushU16le(&c->log, L"\n", 0);
+      } else {
+        c->num_font_failed++;
+        StrDbPushU16le(&c->log, L"[XX] ", 0);
+        StrDbPushU16le(&c->log, face, 0);
+        StrDbPushU16le(&c->log, L" > ", 0);
+        StrDbPushU16le(&c->log, file, 0);
+        StrDbPushU16le(&c->log, L"\n", 0);
+      }
+    } else {
+      // file == NULL
+      c->num_font_unmatch++;
+      StrDbPushU16le(&c->log, L"[=?] ", 0);
+      StrDbPushU16le(&c->log, face, 0);
+      StrDbPushU16le(&c->log, L"\n", 0);
+    }
+  }
 }
 
 static void AppUnloadFonts(app_ctx_t *c) {
@@ -207,10 +266,9 @@ static void AppUpdateStatus(app_ctx_t *c) {
     FontSetStat(c->font_set, &stat);
   }
   wsprintfW(c->buffer,
-            L"%d loaded. %d failed. %d unmatch.\n%d file%s. %d font%s.",
+            L"%d loaded. %d failed. %d unmatch.\n%d files. %d fonts.",
             c->num_font_loaded, c->num_font_failed, c->num_font_unmatch,
-            stat.num_files, stat.num_files == 1 ? L"" : L"s", stat.num_faces,
-            stat.num_faces == 1 ? L"" : L"s");
+            stat.num_files, stat.num_faces);
 
   const wchar_t *cap = NULL;
   switch (c->app_state) {
@@ -295,51 +353,20 @@ static DWORD WINAPI AppWorker(LPVOID param) {
       r = WalkDir(c->root_path.buffer, walk_cb_font, c, &c->alloc);
       if (r != 0)
         break;
-      FontSetBuildIndex(c->font_set);
       FontSetDump(c->font_set, c->db_path);
+      FontSetBuildIndex(c->font_set);
       c->app_state = APP_LOAD_RES;
       break;
     case APP_LOAD_RES:
       for (uint32_t i = 0, pos = 0; i != c->num_sub_font; i++) {
         const wchar_t *face = StrDbGet(&c->sub_font, pos);
         pos = StrDbNext(&c->sub_font, pos);
-        if (IsFontInstalled(face)) {
-          StrDbPushU16le(&c->log, L"[ok] ", 0);
-          StrDbPushU16le(&c->log, face, 0);
-          StrDbPushU16le(&c->log, L"\n", 0);
-        } else {
-          const wchar_t *file = FontSetLookup(c->font_set, face);
-          StrDbRewind(&c->root_path, c->root_pos);
-          if (file) {
-            if (MOCK_FAKE_LOAD ||
-                StrDbPushU16le(&c->root_path, file, 0) == 0 &&
-                    AddFontResource(c->root_path.buffer) != 0) {
-              c->num_font_loaded++;
-              StrDbPushU16le(&c->log, L"[ok] ", 0);
-              StrDbPushU16le(&c->log, face, 0);
-              StrDbPushU16le(&c->log, L" > ", 0);
-              StrDbPushU16le(&c->log, file, 0);
-              StrDbPushU16le(&c->log, L"\n", 0);
-            } else {
-              c->num_font_failed++;
-              StrDbPushU16le(&c->log, L"[XX] ", 0);
-              StrDbPushU16le(&c->log, face, 0);
-              StrDbPushU16le(&c->log, L" > ", 0);
-              StrDbPushU16le(&c->log, file, 0);
-              StrDbPushU16le(&c->log, L"\n", 0);
-            }
-          } else {
-            c->num_font_unmatch++;
-            StrDbPushU16le(&c->log, L"[=?] ", 0);
-            StrDbPushU16le(&c->log, face, 0);
-            StrDbPushU16le(&c->log, L"\n", 0);
-          }
-        }
+
+        AppLoadFont(c, face);
+
         if (c->cancelled)
           break;
       }
-      if (c->cancelled)
-        break;
       c->app_state = APP_DONE;
       AppUpdateStatus(c);
       break;
@@ -411,7 +438,21 @@ static HRESULT CALLBACK DlgDoneProc(HWND hWnd,
                                     LPARAM lParam,
                                     LONG_PTR dwRefData) {
   app_ctx_t *c = (app_ctx_t *)dwRefData;
-  if (uNotification == TDN_BUTTON_CLICKED) {
+  if (uNotification == TDN_NAVIGATED) {
+    font_set_stat_t stat = {0};
+    if (c->font_set) {
+      FontSetStat(c->font_set, &stat);
+    }
+    if (c->num_sub_font == 0 || stat.num_faces == 0) {
+      TaskDialog(hWnd, c->dlg_done.hInstance, kAppTitle, L"Usage",
+                 L"1. Move EXE to font folder,\n"
+                 L"2. Drop ass/ssa/folder onto EXE,\n"
+                 L"3. Hit \"Retry\"?",
+                 TDCBF_CLOSE_BUTTON, TD_INFORMATION_ICON, NULL);
+    }
+  } else if (uNotification == TDN_HYPERLINK_CLICKED) {
+    ShellExecute(NULL, NULL, (LPCWSTR)lParam, NULL, NULL, SW_SHOW);
+  } else if (uNotification == TDN_BUTTON_CLICKED) {
     if (wParam == IDCANCEL || wParam == IDCLOSE || wParam == IDRETRY) {
       if (wParam != IDRETRY) {
         c->req_exit = 1;
@@ -440,6 +481,16 @@ static void *mem_realloc(void *existing, size_t size, void *arg) {
   return HeapReAlloc(heap, HEAP_ZERO_MEMORY, existing, size);
 }
 
+extern IMAGE_DOS_HEADER __ImageBase;
+
+static const TASKDIALOGCONFIG kDlgTemplateWork = {
+    .cbSize = sizeof kDlgTemplateWork,
+    .hInstance = (HINSTANCE)&__ImageBase,
+    .pszWindowTitle = kAppTitle,
+    .dwCommonButtons = TDCBF_CANCEL_BUTTON,
+    .pfCallback = DlgWorkProc,
+    .dwFlags = TDF_SHOW_MARQUEE_PROGRESS_BAR | TDF_CALLBACK_TIMER};
+
 int AppInit(app_ctx_t *c, HINSTANCE hInst) {
   c->alloc.alloc = mem_realloc;
   c->alloc.arg = HeapCreate(0, 0, 0);
@@ -458,13 +509,16 @@ int AppInit(app_ctx_t *c, HINSTANCE hInst) {
     return 1;
 
   AppUpdateStatus(c);
+  // memcpy(&c->dlg_work, &kDlgTemplateWork, sizeof c->dlg_work);
   c->dlg_work.cbSize = sizeof c->dlg_work;
   c->dlg_work.hInstance = hInst;
-  c->dlg_work.pszWindowTitle = L"FontLoaderSub r2";
+  c->dlg_work.pszWindowTitle = kAppTitle;
   c->dlg_work.dwCommonButtons = TDCBF_CANCEL_BUTTON;
-  c->dlg_work.lpCallbackData = (LONG_PTR)c;
   c->dlg_work.pfCallback = DlgWorkProc;
-  c->dlg_work.dwFlags |= TDF_SHOW_MARQUEE_PROGRESS_BAR | TDF_CALLBACK_TIMER;
+  c->dlg_work.dwFlags =
+      TDF_SHOW_MARQUEE_PROGRESS_BAR | TDF_CALLBACK_TIMER | TDF_SIZE_TO_CONTENT;
+  c->dlg_done.cxWidth = 256 * 0;
+  c->dlg_work.lpCallbackData = (LONG_PTR)c;
   c->dlg_work.pszMainInstruction = c->main_action;
   c->dlg_work.pszContent = c->buffer;
 
@@ -473,13 +527,17 @@ int AppInit(app_ctx_t *c, HINSTANCE hInst) {
   c->dlg_done.pszWindowTitle = c->dlg_work.pszWindowTitle;
   c->dlg_done.dwCommonButtons =
       TDCBF_CLOSE_BUTTON | TDCBF_RETRY_BUTTON | TDCBF_OK_BUTTON;
-  c->dlg_done.lpCallbackData = (LONG_PTR)c;
   c->dlg_done.pfCallback = DlgDoneProc;
-  c->dlg_done.dwFlags |= TDF_CAN_BE_MINIMIZED | TDF_EXPAND_FOOTER_AREA;
+  c->dlg_done.dwFlags |=
+      TDF_CAN_BE_MINIMIZED | TDF_ENABLE_HYPERLINKS | TDF_SIZE_TO_CONTENT;
   c->dlg_done.pszMainInstruction = L"Done";
+  c->dlg_done.cxWidth = c->dlg_done.cxWidth;
+  c->dlg_done.pszFooterIcon = TD_SHIELD_ICON;
+  c->dlg_done.pszFooter =
+      L"GPLv2: <A HREF=\"https://github.com/yzwduck/FontLoaderSub\">"
+      L"github.com/yzwduck/FontLoaderSub</A>";
+  c->dlg_done.lpCallbackData = (LONG_PTR)c;
   c->dlg_done.pszContent = c->buffer;
-  c->dlg_done.cxWidth = 256;
-  c->dlg_done.pszFooter = L"GPLv2: balabala";
 
   StrDbCreate(&c->alloc, &c->sub_font);
 
