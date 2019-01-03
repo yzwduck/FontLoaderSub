@@ -3,7 +3,9 @@ image: Visual Studio 2017
 clone_depth: 5
 
 platform: x86
-configuration: Minimize
+configuration:
+ - Minimize
+ - Release
 
 artifacts:
  - path: '$(configuration)\*.exe'

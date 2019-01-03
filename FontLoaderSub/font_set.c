@@ -525,7 +525,7 @@ int FontSetBuildIndex(font_set_t *set) {
 
   // debug
   font_set_t *r = set;
-  if (1) {
+  if (0) {
     HANDLE fp = CreateFile(L"index_face.txt", GENERIC_WRITE, FILE_SHARE_READ,
                            NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     for (uint32_t i = 0; i < r->stat.num_faces; i++) {
