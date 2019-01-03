@@ -11,6 +11,15 @@ typedef struct {
   uint32_t num_error;
 } font_set_stat_t;
 
+typedef struct {
+  font_set_t *set;          // internal use
+  uint32_t query_id;        // internal use
+  uint32_t set_id;          // internal use
+  uint32_t file_id;         // public, unique in set
+  const wchar_t *filename;  // public
+  const wchar_t *version;   // public
+} font_iter_t;
+
 int FontSetCreate(allocator_t *alloc, font_set_t **out);
 
 int FontSetFree(font_set_t *set);
@@ -22,6 +31,12 @@ int FontSetBuildIndex(font_set_t *set);
 const wchar_t *FontSetLookup(font_set_t *set, const wchar_t *face);
 
 void FontSetStat(font_set_t *set, font_set_stat_t *stat);
+
+int FontSetLookupIter(font_set_t *set, const wchar_t *face, font_iter_t *iter);
+
+int FontSetLookupIterNext(font_iter_t *iter);
+
+const wchar_t *FontSetLookupFileId(font_set_t *set, uint32_t id);
 
 // Windows related
 

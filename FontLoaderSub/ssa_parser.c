@@ -353,19 +353,14 @@ wchar_t *TextFileFromPath(const wchar_t *path,
   HANDLE h = INVALID_HANDLE_VALUE, hm = INVALID_HANDLE_VALUE;
   char *buf = NULL;
   StringRange o[1] = {NULL};
+  memmap_t mmap;
 
   do {
-    h = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING,
-                   FILE_ATTRIBUTE_NORMAL, NULL);
-    if (h == INVALID_HANDLE_VALUE)
+    FlMemMap(path, &mmap);
+    if (mmap.data == NULL)
       break;
-    hm = CreateFileMapping(h, NULL, PAGE_READONLY, 0, 0, NULL);
-    if (hm == INVALID_HANDLE_VALUE)
-      break;
-    buf = MapViewOfFile(hm, FILE_MAP_READ, 0, 0, 0);
-    if (buf == NULL)
-      break;
-    const size_t size = GetFileSize(h, NULL);
+    buf = (char *)mmap.data;
+    const size_t size = mmap.size;
     if (size < 4)
       break;
 
@@ -382,10 +377,7 @@ wchar_t *TextFileFromPath(const wchar_t *path,
       }
     }
   } while (0);
-  if (buf)
-    UnmapViewOfFile(buf);
-  CloseHandle(hm);
-  CloseHandle(h);
+  FlMemUnmap(&mmap);
   if (cch)
     *cch = o->eos - o->str;
   return (wchar_t *)o->str;

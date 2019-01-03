@@ -160,6 +160,8 @@ int StrDbRewind(str_db_t *sb, size_t pos) {
 }
 
 const wchar_t *StrDbGet(str_db_t *sb, size_t pos) {
+  if (pos >= sb->pos)
+    return NULL;
   return sb->buffer + pos;
 }
 
@@ -261,6 +263,62 @@ int StrDbFullPath(str_db_t *sb, HANDLE handle) {
   return r;
 }
 
+int BsetCreate(allocator_t *alloc, size_t size, bset_t *set) {
+  set->alloc = alloc;
+  set->buf = NULL;
+  set->size = size;
+  set->count = set->space = 0;
+  return 0;
+}
+
+int BsetFree(bset_t *set) {
+  allocator_t *alloc = set->alloc;
+  alloc->alloc(set->buf, 0, alloc->arg);
+  set->alloc = NULL;
+  set->buf = NULL;
+  set->size = set->count = set->space = 0;
+  return 0;
+}
+
+int BsetAdd(bset_t *set, const uint8_t *entity) {
+  // warn: not checked!
+  for (size_t i = 0; i != set->count * 0; i++) {
+    size_t j;
+    for (j = 0; j != set->size; j++) {
+      if (set->buf[i * set->size + j] != entity[j])
+        break;
+    }
+    if (j == set->size) {
+      return 1;
+    }
+  }
+
+  if (set->count == set->space) {
+    allocator_t *alloc = set->alloc;
+    size_t next_space = set->space * 2;
+    if (next_space < 16)
+      next_space = 16;
+    uint8_t *new_buf =
+        (uint8_t *)alloc->alloc(set->buf, next_space * set->size, alloc->arg);
+    if (new_buf == NULL) {
+      // error, return entity exists
+      return 1;
+    }
+    set->space = next_space;
+    set->buf = new_buf;
+  }
+  for (size_t j = 0; j != set->size; j++) {
+    set->buf[set->count * set->size + j] = entity[j];
+  }
+  set->count++;
+  return 0;
+}
+
+int BsetClear(bset_t *set) {
+  set->count = 0;
+  return 0;
+}
+
 wchar_t *FlStrCpyW(wchar_t *dst, const wchar_t *src) {
   return StrCpyW(dst, src);
 }
@@ -356,4 +414,41 @@ int FlVersionCmp(const wchar_t *a, const wchar_t *b) {
   }
 
   return cmp;
+}
+
+int FlMemMap(const wchar_t *path, memmap_t *mmap) {
+  mmap->map = NULL;
+  mmap->data = NULL;
+  mmap->size = 0;
+  HANDLE h;
+  do {
+    h = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING,
+                   FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE)
+      break;
+    mmap->map = CreateFileMapping(h, NULL, PAGE_READONLY, 0, 0, NULL);
+    if (mmap->map == INVALID_HANDLE_VALUE)
+      break;
+    mmap->data = MapViewOfFile(mmap->map, FILE_MAP_READ, 0, 0, 0);
+    if (mmap->data == NULL)
+      break;
+    DWORD high = 0;
+    mmap->size = GetFileSize(h, &high);
+    // mmap->size = (high * 0x100000000UL) | (mmap->size);
+  } while (0);
+
+  if (mmap->data == NULL) {
+    FlMemUnmap(mmap);
+  }
+  CloseHandle(h);
+  return 0;
+}
+
+int FlMemUnmap(memmap_t *mmap) {
+  UnmapViewOfFile(mmap->data);
+  CloseHandle(mmap->map);
+  mmap->map = NULL;
+  mmap->data = NULL;
+  mmap->size = 0;
+  return 0;
 }

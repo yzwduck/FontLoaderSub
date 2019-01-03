@@ -298,8 +298,14 @@ static int FontPairCmp(wchar_t *base, font_pair_t *a, font_pair_t *b) {
       const wchar_t *ver_a = base + a->ver;
       const wchar_t *ver_b = base + b->ver;
       cmp = FlVersionCmp(ver_a, ver_b);
+      if (0 && cmp == 0) {
+        const wchar_t *path_a = base + a->tag;
+        const wchar_t *path_b = base + b->tag;
+        cmp = FlStrCmpIW(path_a, path_b);
+      }
     }
   }
+
   return cmp;
 }
 
@@ -402,6 +408,7 @@ struct _font_set_t {
   void *map_ptr;
   HANDLE map_handle;
   font_set_stat_t stat;
+  allocator_t *alloc;
 };
 
 int FontSetCreate(allocator_t *alloc, font_set_t **out) {
@@ -518,6 +525,18 @@ int FontSetBuildIndex(font_set_t *set) {
 
   // debug
   font_set_t *r = set;
+  if (1) {
+    HANDLE fp = CreateFile(L"index_face.txt", GENERIC_WRITE, FILE_SHARE_READ,
+                           NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    for (uint32_t i = 0; i < r->stat.num_faces; i++) {
+      const wchar_t *font = StrDbGet(&r->db, r->pair[i].face);
+      DWORD cch = 2 * FlStrLenW(font);
+      WriteFile(fp, font, cch, &cch, NULL);
+      wchar_t eol[2] = L"\n";
+      WriteFile(fp, eol, 2, &cch, NULL);
+    }
+    CloseHandle(fp);
+  }
   for (uint32_t i = 0; i < r->stat.num_faces * 0; i++) {
     const wchar_t *font = StrDbGet(&r->db, r->pair[i].face);
     if (r->pair[i].ver == (uint32_t)-1) {
@@ -561,6 +580,95 @@ const wchar_t *FontSetLookup(font_set_t *set, const wchar_t *face) {
 
 void FontSetStat(font_set_t *set, font_set_stat_t *stat) {
   *stat = set->stat;
+}
+
+int FontSetLookupIter(font_set_t *set, const wchar_t *face, font_iter_t *iter) {
+  if (set->pair == NULL || set->stat.num_faces == 0 || iter == NULL)
+    return 0;
+
+  uint32_t a = 0;
+  uint32_t b = set->stat.num_faces - 1;
+  uint32_t m;
+  while (a <= b) {
+    m = a + (b - a) / 2;
+    const wchar_t *got = StrDbGet(&set->db, set->pair[m].face);
+    int t = FlStrCmpIW(face, got);
+    if (t == 0) {
+      // find the first
+      while (m > 0 &&
+             FlStrCmpIW(face, StrDbGet(&set->db, set->pair[m - 1].face)) == 0)
+        m--;
+      // find the latest
+      const wchar_t *latest_ver = StrDbGet(&set->db, set->pair[m].ver);
+      for (uint32_t x = m + 1; x != set->stat.num_faces; x++) {
+        const wchar_t *got_face = StrDbGet(&set->db, set->pair[x].face);
+        const wchar_t *got_ver = StrDbGet(&set->db, set->pair[x].ver);
+        if (FlStrCmpIW(face, got_face) != 0)
+          break;
+        if (latest_ver == NULL || got_ver == NULL ||
+            FlVersionCmp(latest_ver, got_ver) < 0) {
+          m = x;
+          latest_ver = got_ver;
+        }
+      }
+      a = b = m;
+      break;
+    } else if (t > 0) {
+      a = m + 1;
+    } else {
+      b = m - 1;
+    }
+  }
+
+  if (a != b || a != m) {
+    // not found
+    iter->query_id = 0;
+    iter->file_id = 0;
+    iter->filename = NULL;
+    iter->version = NULL;
+    return 0;
+  }
+
+  iter->set = set;
+  iter->query_id = m;
+  iter->set_id = m;
+  iter->file_id = set->pair[m].tag;
+  iter->filename = StrDbGet(&set->db, set->pair[m].tag);
+  iter->version = StrDbGet(&set->db, set->pair[m].ver);
+  return 1;
+}
+
+int FontSetLookupIterNext(font_iter_t *iter) {
+  font_set_t *set = iter->set;
+  const wchar_t *match_face =
+      StrDbGet(&set->db, set->pair[iter->query_id].face);
+  const wchar_t *match_ver = StrDbGet(&set->db, set->pair[iter->query_id].ver);
+  size_t len = FlStrLenW(match_face);
+
+  while ((++iter->set_id) != set->stat.num_faces) {
+    const wchar_t *got_face = StrDbGet(&set->db, set->pair[iter->set_id].face);
+    const wchar_t *got_ver = StrDbGet(&set->db, set->pair[iter->set_id].ver);
+    if (FlStrCmpNW(match_face, got_face, len) != 0) {
+      break;
+    } else if (FlStrCmpW(match_ver, got_ver) == 0) {
+      // yield
+      iter->file_id = set->pair[iter->set_id].tag;
+      iter->filename = StrDbGet(&set->db, set->pair[iter->set_id].tag);
+      iter->version = StrDbGet(&set->db, set->pair[iter->set_id].ver);
+      return 1;
+    }
+  }
+  // end
+  iter->query_id = 0;
+  iter->set_id = 0;
+  iter->file_id = 0;
+  iter->filename = NULL;
+  iter->version = NULL;
+  return 0;
+}
+
+const wchar_t *FontSetLookupFileId(font_set_t *set, uint32_t id) {
+  return StrDbGet(&set->db, id);
 }
 
 // Windows related

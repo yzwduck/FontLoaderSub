@@ -70,6 +70,26 @@ int StrDbIsDuplicate(str_db_t *sb, size_t start, size_t target);
 
 int StrDbFullPath(str_db_t *sb, HANDLE handle);
 
+// binary set
+
+struct _bset_t {
+  allocator_t *alloc;
+  size_t size;
+  size_t space;
+  size_t count;
+  uint8_t *buf;
+};
+
+typedef struct _bset_t bset_t;
+
+int BsetCreate(allocator_t *alloc, size_t size, bset_t *set);
+
+int BsetFree(bset_t *set);
+
+int BsetAdd(bset_t *set, const uint8_t *entity);
+
+int BsetClear(bset_t *set);
+
 // plain string utils
 
 wchar_t *FlStrCpyW(wchar_t *dst, const wchar_t *src);
@@ -96,9 +116,20 @@ enum FL_STATUS {
   FL_OUT_OF_MEMORY = 2,
   FL_UNRECOGNIZED = 3,
   FL_CORRUPTED = 4,
+  FL_DUP = 5,
 };
 
 // compare two version string
 int FlVersionCmp(const wchar_t *a, const wchar_t *b);
+
+typedef struct {
+  HANDLE map;
+  void *data;
+  size_t size;
+} memmap_t;
+
+int FlMemMap(const wchar_t *path, memmap_t *mmap);
+
+int FlMemUnmap(memmap_t *mmap);
 
 #endif
