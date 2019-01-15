@@ -1,420 +1,5 @@
+#include <Windows.h>
 #include "util.h"
-
-#include <Shlwapi.h>
-
-typedef struct {
-  file_walk_cb_t callback;
-  void *arg;  // for callback
-  str_db_t sb_path;
-} file_walk_t;
-
-static int WalkDirDfs(file_walk_t *ctx) {
-  int r = FL_OK;
-  str_db_t *sb_path = &ctx->sb_path;
-
-  // ensure enough memory to hold the path
-  // scenario 1: "abc\*" -> "abc\new\*"
-  // scenario 2: "root\this" -> "root\this\*"
-  r = StrDbPreAlloc(sb_path, MAX_PATH + 1);
-  if (r != FL_OK)
-    return FL_OUT_OF_MEMORY;
-
-  WIN32_FIND_DATA fd;
-  HANDLE find_handle = FindFirstFile(sb_path->buffer, &fd);
-
-  // trim until last '\'
-  if (1) {
-    size_t pos = StrDbTell(sb_path);
-    const wchar_t *buf = StrDbGet(sb_path, 0);
-    while (pos > 0 && buf[pos - 1] != L'\\')
-      pos--;
-    StrDbRewind(sb_path, pos);
-  }
-  const size_t root_pos = StrDbTell(sb_path);
-
-  do {
-    if (find_handle == INVALID_HANDLE_VALUE) {
-      // r = FL_OS_ERROR;
-      break;
-    }
-
-    fd.cFileName[MAX_PATH - 1] = 0;  // fail-safe
-    if (fd.cFileName[0] == L'.' && fd.cFileName[1] == 0 ||
-        fd.cFileName[0] == L'.' && fd.cFileName[1] == L'.' &&
-            fd.cFileName[2] == 0) {
-      // nop for "." and ".."
-    } else if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-      r = StrDbPushU16le(sb_path, fd.cFileName, 0);
-      if (r != FL_OK)
-        break;
-      sb_path->buffer[sb_path->pos++] = L'\\';
-      sb_path->buffer[sb_path->pos++] = L'*';
-      sb_path->buffer[sb_path->pos] = 0;
-      r = WalkDirDfs(ctx);
-      StrDbRewind(sb_path, root_pos);
-      if (r != FL_OK)
-        break;
-    } else if (ctx->callback != NULL) {
-      r = StrDbPushU16le(sb_path, fd.cFileName, 0);
-      if (r != FL_OK)
-        break;
-      r = ctx->callback(sb_path->buffer, &fd, ctx->arg);
-      StrDbRewind(sb_path, root_pos);
-      if (r != FL_OK)
-        break;
-    }
-  } while (FindNextFile(find_handle, &fd));
-  FindClose(find_handle);
-  return r;
-}
-
-int WalkDir(const wchar_t *path,
-            file_walk_cb_t callback,
-            void *arg,
-            allocator_t *alloc) {
-  int ret = FL_OS_ERROR;
-  file_walk_t ctx = {callback, arg};
-  StrDbCreate(alloc, &ctx.sb_path);
-  HANDLE h;
-  do {
-    // Open the path, either it's a file or a directory
-    h = CreateFile(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
-                   OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
-    if (h == INVALID_HANDLE_VALUE)
-      break;
-
-    ret = StrDbFullPath(&ctx.sb_path, h);
-    if (ret != FL_OK)
-      break;
-
-    BY_HANDLE_FILE_INFORMATION info;
-    if (GetFileInformationByHandle(h, &info) &&
-        !(info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-      // the `path` is a file, emulate WIN32_FIND_DATA
-      WIN32_FIND_DATA emu;
-      emu.dwFileAttributes = info.dwFileAttributes;
-      emu.ftCreationTime = info.ftCreationTime;
-      emu.ftLastAccessTime = info.ftLastAccessTime;
-      emu.ftLastWriteTime = info.ftLastWriteTime;
-      emu.nFileSizeHigh = info.nFileSizeHigh;
-      emu.nFileSizeLow = info.nFileSizeLow;
-      ret = callback(ctx.sb_path.buffer, &emu, arg);
-    } else {
-      // normal recursive dir routine
-      if (ctx.sb_path.buffer[ctx.sb_path.pos - 1] != L'\\')
-        ctx.sb_path.buffer[ctx.sb_path.pos++] = L'\\';
-      ctx.sb_path.buffer[ctx.sb_path.pos++] = L'*';
-      ctx.sb_path.buffer[ctx.sb_path.pos] = 0;
-      ret = WalkDirDfs(&ctx);
-    }
-  } while (0);
-  CloseHandle(h);
-  StrDbFree(&ctx.sb_path);
-  return ret;
-}
-
-int StrDbCreate(allocator_t *alloc, str_db_t *sb) {
-  const str_db_t tmp = {NULL};
-  *sb = tmp;
-  sb->alloc = *alloc;
-  sb->ex_pad = L'\n';
-  sb->pad_len = 2;
-  return FL_OK;
-}
-
-int StrDbFree(str_db_t *sb) {
-  sb->alloc.alloc(sb->buffer, 0, sb->alloc.arg);
-  return FL_OK;
-}
-
-size_t StrDbTell(str_db_t *sb) {
-  return sb->pos;
-}
-
-size_t StrDbNext(str_db_t *sb, size_t pos) {
-  // if no delimiter, skip to tail
-  if (sb->pad_len == 0)
-    return sb->pos;
-
-  // first delimiter char is '\0'
-  while (pos < sb->pos && sb->buffer[pos] != 0)
-    pos++;
-  if (pos == sb->pos)
-    return pos;
-  pos++;
-
-  // skip second delimiter
-  if (sb->pad_len > 1 && pos < sb->pos && (1 || sb->buffer[pos] == sb->ex_pad))
-    pos++;
-
-  return pos;
-}
-
-int StrDbRewind(str_db_t *sb, size_t pos) {
-  if (pos < sb->pos)
-    sb->pos = pos;
-  if (sb->pos != sb->size && sb->buffer) {
-    sb->buffer[sb->pos] = 0;
-  }
-  return FL_OK;
-}
-
-const wchar_t *StrDbGet(str_db_t *sb, size_t pos) {
-  if (pos >= sb->pos)
-    return NULL;
-  return sb->buffer + pos;
-}
-
-int StrDbPreAlloc(str_db_t *sb, size_t cch) {
-  if (sb->pos + cch > sb->size) {
-    const size_t new_size = (sb->pos + cch) * 2;
-    wchar_t *new_buf = (wchar_t *)sb->alloc.alloc(
-        sb->buffer, new_size * sizeof sb->buffer[0], sb->alloc.arg);
-    if (new_buf == NULL)
-      return FL_OUT_OF_MEMORY;
-    sb->buffer = new_buf;
-    sb->size = new_size;
-  }
-  return FL_OK;
-}
-
-int StrDbPushU16le(str_db_t *sb, const wchar_t *str, size_t cch) {
-  // count chars
-  const size_t original_cch = cch;
-  if (cch == 0)
-    cch = FlStrLenW(str);
-  while (cch > 0 && str[cch - 1] == 0)
-    cch--;
-  if (cch == 0 && original_cch != 0) {
-    // WARN: not insert empty string, unless specifying cch=1
-    return FL_OK;
-  }
-
-  // allocate memory and copy string
-  int r = StrDbPreAlloc(sb, cch + 2);
-  if (r != FL_OK)
-    return r;
-  wchar_t *buf = &sb->buffer[sb->pos];
-  // FlStrCpyW(buf, str);
-  for (size_t i = 0; i != cch; i++)
-    buf[i] = str[i];
-  buf[cch] = 0;
-  buf[cch + 1] = sb->ex_pad;
-  sb->pos += cch + sb->pad_len;
-  return FL_OK;
-}
-
-int StrDbPushPrefix(str_db_t *sb, const wchar_t *str, size_t cch) {
-  int r = StrDbPushU16le(sb, str, cch);
-  if (r == FL_OK && str[0]) {
-    // rewind pad_len
-    sb->pos -= sb->pad_len;
-  }
-  return r;
-}
-
-int StrDbPushU16be(str_db_t *sb, const wchar_t *str, size_t cch) {
-  const size_t pos = sb->pos;
-  int r = StrDbPushU16le(sb, str, cch);
-  if (r != FL_OK)
-    return r;
-  wchar_t *buf = &sb->buffer[pos];
-  for (size_t i = 0; buf[i] != 0; i++) {
-    buf[i] = be16(buf[i]);
-  }
-  return FL_OK;
-}
-
-int StrDbIsDuplicate(str_db_t *sb, size_t start, size_t target) {
-  const wchar_t *t = StrDbGet(sb, target);
-  while (start < sb->pos && start < target) {
-    const wchar_t *s = StrDbGet(sb, start);
-    int r = FlStrCmpIW(s, t);
-    if (r == 0)
-      return 1;
-    start = StrDbNext(sb, start);
-  }
-  return 0;
-}
-
-int StrDbFullPath(str_db_t *sb, HANDLE handle) {
-  int r = FL_OS_ERROR;
-  sb->pos = 0;
-  sb->ex_pad = 0;
-  sb->pad_len = 0;
-  do {
-    const DWORD name_flags = FILE_NAME_NORMALIZED | VOLUME_NAME_DOS;
-    const DWORD size = GetFinalPathNameByHandle(handle, NULL, 0, name_flags);
-    if (size == 0)
-      break;
-    sb->pos = size;
-    r = StrDbPreAlloc(sb, size + MAX_PATH * 2);
-    if (r != FL_OK)
-      break;
-    if (GetFinalPathNameByHandle(handle, sb->buffer, sb->size, name_flags) == 0)
-      break;
-    while (sb->pos > 0 && sb->buffer[sb->pos - 1] == 0)
-      sb->pos--;
-    r = FL_OK;
-  } while (0);
-
-  if (r != FL_OK)
-    StrDbRewind(sb, 0);
-  return r;
-}
-
-int BsetCreate(allocator_t *alloc, size_t size, bset_t *set) {
-  set->alloc = alloc;
-  set->buf = NULL;
-  set->size = size;
-  set->count = set->space = 0;
-  return 0;
-}
-
-int BsetFree(bset_t *set) {
-  allocator_t *alloc = set->alloc;
-  alloc->alloc(set->buf, 0, alloc->arg);
-  set->alloc = NULL;
-  set->buf = NULL;
-  set->size = set->count = set->space = 0;
-  return 0;
-}
-
-int BsetAdd(bset_t *set, const uint8_t *entity) {
-  // warn: not checked!
-  for (size_t i = 0; i != set->count * 0; i++) {
-    size_t j;
-    for (j = 0; j != set->size; j++) {
-      if (set->buf[i * set->size + j] != entity[j])
-        break;
-    }
-    if (j == set->size) {
-      return 1;
-    }
-  }
-
-  if (set->count == set->space) {
-    allocator_t *alloc = set->alloc;
-    size_t next_space = set->space * 2;
-    if (next_space < 16)
-      next_space = 16;
-    uint8_t *new_buf =
-        (uint8_t *)alloc->alloc(set->buf, next_space * set->size, alloc->arg);
-    if (new_buf == NULL) {
-      // error, return entity exists
-      return 1;
-    }
-    set->space = next_space;
-    set->buf = new_buf;
-  }
-  for (size_t j = 0; j != set->size; j++) {
-    set->buf[set->count * set->size + j] = entity[j];
-  }
-  set->count++;
-  return 0;
-}
-
-int BsetClear(bset_t *set) {
-  set->count = 0;
-  return 0;
-}
-
-wchar_t *FlStrCpyW(wchar_t *dst, const wchar_t *src) {
-  return StrCpyW(dst, src);
-}
-
-wchar_t *FlStrCpyNW(wchar_t *dst, const wchar_t *src, size_t cch) {
-  return StrCpyNW(dst, src, cch);
-}
-
-size_t FlStrLenW(const wchar_t *str) {
-  size_t r = 0;
-  while (str[r])
-    r++;
-  return r;
-}
-
-int FlStrCmpW(const wchar_t *a, const wchar_t *b) {
-  return StrCmpW(a, b);
-}
-
-int FlStrCmpIW(const wchar_t *a, const wchar_t *b) {
-  return StrCmpIW(a, b);
-}
-
-int FlStrCmpNW(const wchar_t *a, const wchar_t *b, size_t len) {
-  return StrCmpNW(a, b, len);
-}
-
-int FlStrCmpNIW(const wchar_t *a, const wchar_t *b, size_t len) {
-  return StrCmpNIW(a, b, len);
-}
-
-wchar_t *FlStrChrNW(const wchar_t *s, wchar_t ch, size_t len) {
-  return StrChrNW(s, ch, (UINT)len);
-}
-
-static int is_digit(wchar_t ch) {
-  if (L'0' <= ch && ch <= L'9')
-    return ch - L'0';
-  else
-    return -1;
-}
-
-int FlVersionCmp(const wchar_t *a, const wchar_t *b) {
-  const wchar_t *ptr_a = a, *ptr_b = b;
-  int cmp = 0;
-
-  while (*ptr_a && *ptr_b && cmp == 0) {
-    if (is_digit(*ptr_a) >= 0 && is_digit(*ptr_b) >= 0) {
-      // seek to the end of digits
-      const wchar_t *start_a = ptr_a, *start_b = ptr_b;
-      while (is_digit(*ptr_a) >= 0)
-        ptr_a++;
-      while (is_digit(*ptr_b) >= 0)
-        ptr_b++;
-      // compare from right to left
-      const wchar_t *dig_a = ptr_a, *dig_b = ptr_b;
-      while (dig_a != start_a && dig_b != start_b) {
-        dig_a--;
-        dig_b--;
-        if (*dig_a > *dig_b) {
-          cmp = 1;
-        } else if (*dig_a < *dig_b) {
-          cmp = -1;
-        }
-      }
-      // leading zero
-      while (dig_a != start_a && dig_a[-1] == L'0') {
-        dig_a--;
-      }
-      while (dig_b != start_b && dig_b[-1] == L'0') {
-        dig_b--;
-      }
-      if (dig_a != start_a) {
-        cmp = 1;
-      } else if (dig_b != start_b) {
-        cmp = -1;
-      }
-    } else if (*ptr_a > *ptr_b) {
-      cmp = 1;
-    } else if (*ptr_a < *ptr_b) {
-      cmp = -1;
-    } else {
-      ptr_a++;
-      ptr_b++;
-    }
-  }
-
-  if (cmp == 0) {
-    if (*ptr_a)
-      cmp = 1;
-    else if (*ptr_b)
-      cmp = -1;
-  }
-
-  return cmp;
-}
 
 int FlMemMap(const wchar_t *path, memmap_t *mmap) {
   mmap->map = NULL;
@@ -451,4 +36,127 @@ int FlMemUnmap(memmap_t *mmap) {
   mmap->data = NULL;
   mmap->size = 0;
   return 0;
+}
+
+static int FlTestUtf8(const uint8_t *buffer, size_t size) {
+  const uint8_t *p, *last;
+  int rem = 0;
+  for (p = buffer, last = buffer + size; p != last; p++) {
+    if (rem) {
+      if ((*p & 0xc0) == 0x80) {
+        // 10xxxxxx
+        --rem;
+      } else {
+        return 0;
+      }
+    } else if ((*p & 0x80) == 0) {
+      // rem = 0;
+    } else if ((*p & 0xd0) == 0xc0) {
+      // 110xxxxx
+      rem = 1;
+    } else if ((*p & 0xf0) == 0xe0) {
+      // 1110xxxx
+      rem = 2;
+    } else if ((*p & 0xf8) == 0xf0) {
+      // 11110xxx
+      rem = 3;
+    } else {
+      return 0;
+    }
+  }
+  return rem == 0;
+}
+
+static wchar_t *FlTextTryDecode(
+    UINT codepage,
+    const uint8_t *mstr,
+    size_t bytes,
+    size_t *cch,
+    allocator_t *alloc) {
+  wchar_t *buf = NULL;
+  int ok = 0;
+  do {
+    const int r =
+        MultiByteToWideChar(codepage, 0, (const char *)mstr, bytes, NULL, 0);
+    *cch = r;
+    if (r == 0)
+      break;
+
+    buf = (wchar_t *)alloc->alloc(buf, (r + 1) * sizeof buf[0], alloc->arg);
+    if (buf == NULL)
+      break;
+
+    const int new_r =
+        MultiByteToWideChar(codepage, 0, (const char *)mstr, bytes, buf, r);
+    if (new_r == 0 || new_r != r)
+      break;
+    buf[r] = 0;
+    ok = 1;
+  } while (0);
+
+  if (!ok) {
+    alloc->alloc(buf, 0, alloc->arg);
+    buf = NULL;
+  }
+  return buf;
+}
+
+static wchar_t *FlTextDecodeUtf16(
+    int big_endian,
+    const uint8_t *mstr,
+    size_t bytes,
+    size_t *cch,
+    allocator_t *alloc) {
+  wchar_t *buf = NULL;
+  int ok = 0;
+
+  do {
+    const size_t r = *cch = bytes / 2;
+    buf = (wchar_t *)alloc->alloc(buf, (r + 1) * sizeof buf[0], alloc->arg);
+    if (buf == NULL)
+      break;
+
+    for (size_t i = 0; i != r; i++) {
+      buf[i] = big_endian ? be16(mstr[i]) : mstr[i];
+    }
+    buf[r] = 0;
+    ok = 1;
+  } while (0);
+
+  if (!ok) {
+    alloc->alloc(buf, 0, alloc->arg);
+    buf = NULL;
+  }
+  return buf;
+}
+
+wchar_t *FlTextDecode(
+    const uint8_t *buf,
+    size_t bytes,
+    size_t *cch,
+    allocator_t *alloc) {
+  wchar_t *res = NULL;
+  if (bytes < 4)
+    return res;
+
+  // detect BOM
+  if (buf[0] == 0xef && buf[1] == 0xbb && buf[2] == 0xbf) {
+    res = FlTextTryDecode(CP_UTF8, buf + 3, bytes - 3, cch, alloc);
+  } else if (buf[0] == 0xff && buf[1] == 0xfe) {
+    // UTF-16 LE
+    res = FlTextDecodeUtf16(0, buf + 2, bytes - 2, cch, alloc);
+  } else if (buf[0] == 0xfe && buf[1] == 0xff) {
+    // UTF-16 BE
+    res = FlTextDecodeUtf16(1, buf + 2, bytes - 2, cch, alloc);
+  }
+
+  // detect UTF-8
+  if (!res && FlTestUtf8(buf, bytes)) {
+    res = FlTextTryDecode(CP_UTF8, buf, bytes, cch, alloc);
+  }
+  // final resort
+  if (!res) {
+    res = FlTextTryDecode(CP_ACP, buf, bytes, cch, alloc);
+  }
+  return res;
 }

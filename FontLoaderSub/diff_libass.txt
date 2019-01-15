@@ -1,0 +1,5 @@
+Notes on ASS/SSA parsing behaviour difference between FontLoaderSub and libass
+
+* parse in UTF-16
+* accept NULL char
+* when `\fn(question)`

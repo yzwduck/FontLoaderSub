@@ -2,3 +2,4 @@ BasedOnStyle: Chromium
 PointerAlignment: Right
 IndentCaseLabels: false
 SortIncludes: false
+AlignAfterOpenBracket: AlwaysBreak

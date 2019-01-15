@@ -1,5 +1,4 @@
-#ifndef FL_UTIL_H
-#define FL_UTIL_H
+#pragma once
 
 #include <Windows.h>
 #include <stdint.h>
@@ -24,104 +23,6 @@ typedef struct _allocator_t {
   void *arg;
 } allocator_t;
 
-typedef int (*file_walk_cb_t)(const wchar_t *full_path,
-                              WIN32_FIND_DATA *data,
-                              void *arg);
-
-int WalkDir(const wchar_t *path,
-            file_walk_cb_t callback,
-            void *arg,
-            allocator_t *alloc);
-
-// String DB
-
-struct _str_db_t {
-  wchar_t *buffer;
-  size_t size;
-  size_t pos;
-  allocator_t alloc;
-  wchar_t ex_pad;
-  uint16_t pad_len;
-};
-
-typedef struct _str_db_t str_db_t;
-
-int StrDbCreate(allocator_t *alloc, str_db_t *sb);
-
-int StrDbFree(str_db_t *sb);
-
-size_t StrDbTell(str_db_t *sb);
-
-size_t StrDbNext(str_db_t *sb, size_t pos);
-
-int StrDbRewind(str_db_t *sb, size_t pos);
-
-int StrDbPreAlloc(str_db_t *sb, size_t cch);
-
-const wchar_t *StrDbGet(str_db_t *sb, size_t pos);
-
-int StrDbPushU16le(str_db_t *sb, const wchar_t *str, size_t cch);
-
-int StrDbPushPrefix(str_db_t *sb, const wchar_t *str, size_t cch);
-
-int StrDbPushU16be(str_db_t *sb, const wchar_t *str, size_t cch);
-
-int StrDbIsDuplicate(str_db_t *sb, size_t start, size_t target);
-
-int StrDbFullPath(str_db_t *sb, HANDLE handle);
-
-// binary set
-
-struct _bset_t {
-  allocator_t *alloc;
-  size_t size;
-  size_t space;
-  size_t count;
-  uint8_t *buf;
-};
-
-typedef struct _bset_t bset_t;
-
-int BsetCreate(allocator_t *alloc, size_t size, bset_t *set);
-
-int BsetFree(bset_t *set);
-
-int BsetAdd(bset_t *set, const uint8_t *entity);
-
-int BsetClear(bset_t *set);
-
-// plain string utils
-
-wchar_t *FlStrCpyW(wchar_t *dst, const wchar_t *src);
-
-wchar_t *FlStrCpyNW(wchar_t *dst, const wchar_t *src, size_t cch);
-
-size_t FlStrLenW(const wchar_t *str);
-
-int FlStrCmpW(const wchar_t *a, const wchar_t *b);
-
-int FlStrCmpIW(const wchar_t *a, const wchar_t *b);
-
-int FlStrCmpNW(const wchar_t *a, const wchar_t *b, size_t len);
-
-int FlStrCmpNIW(const wchar_t *a, const wchar_t *b, size_t len);
-
-wchar_t *FlStrChrNW(const wchar_t *s, wchar_t ch, size_t len);
-
-// return code
-
-enum FL_STATUS {
-  FL_OK = 0,
-  FL_OS_ERROR = 1,
-  FL_OUT_OF_MEMORY = 2,
-  FL_UNRECOGNIZED = 3,
-  FL_CORRUPTED = 4,
-  FL_DUP = 5,
-};
-
-// compare two version string
-int FlVersionCmp(const wchar_t *a, const wchar_t *b);
-
 typedef struct {
   HANDLE map;
   void *data;
@@ -132,4 +33,5 @@ int FlMemMap(const wchar_t *path, memmap_t *mmap);
 
 int FlMemUnmap(memmap_t *mmap);
 
-#endif
+wchar_t *
+FlTextDecode(const uint8_t *buf, size_t bytes, size_t *cch, allocator_t *alloc);
