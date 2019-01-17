@@ -11,8 +11,11 @@ typedef struct {
   uint16_t offset;  // to string, from otf_name_header::offset
 } OTF_NameRecord;
 
-typedef int (
-    *OTF_NameCallback)(OTF_NameRecord *r, const wchar_t *str, void *arg);
+typedef int (*OTF_NameCallback)(
+    uint32_t font_id,
+    OTF_NameRecord *r,
+    const wchar_t *str,
+    void *arg);
 
 int otf_parse(const uint8_t *buf, size_t size, OTF_NameCallback cb, void *arg);
 

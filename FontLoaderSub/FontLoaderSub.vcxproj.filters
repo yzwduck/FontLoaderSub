@@ -84,5 +84,8 @@
     <ClInclude Include="path.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="mock_config.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

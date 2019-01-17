@@ -4,7 +4,13 @@
 #include "util.h"
 #include "font_set.h"
 
-typedef enum { FL_OS_LOADED = 1, FL_LOAD_OK = 2 } FL_MatchFlag;
+typedef enum {
+  FL_OS_LOADED = 1,
+  FL_LOAD_OK = 2,
+  FL_LOAD_ERR = 4,
+  FL_LOAD_DUP = 8,
+  FL_LOAD_MISS = 16
+} FL_MatchFlag;
 
 typedef struct {
   FL_MatchFlag flag;
@@ -24,6 +30,7 @@ typedef struct {
   uint32_t num_sub_font;
 
   void *event_cancel;
+  void *hash_alg;
   vec_t loaded_font;
 } FL_LoaderCtx;
 

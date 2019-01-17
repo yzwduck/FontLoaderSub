@@ -88,6 +88,7 @@ static int is_interested_name_id(uint16_t name_id) {
 }
 
 static int otf_parse_table_name(
+    uint32_t font_id,
     const uint8_t *buffer,
     const uint8_t *eos,
     OTF_NameCallback cb,
@@ -123,7 +124,7 @@ static int otf_parse_table_name(
     if (r->name_id == be16(5) && r->platform == be16(OTF_PLATFORM_WINDOWS)) {
       wchar_t *str_be = (wchar_t *)(str_buffer + be16(r->offset));
       // fire callback
-      ret = cb(r, str_be, arg);
+      ret = cb(font_id, r, str_be, arg);
       if (ret != FL_OK)
         return ret;
     }
@@ -137,7 +138,7 @@ static int otf_parse_table_name(
         is_interested_name_id(be16(r->name_id))) {
       wchar_t *str_be = (wchar_t *)(str_buffer + be16(r->offset));
       // fire callback
-      ret = cb(r, str_be, arg);
+      ret = cb(font_id, r, str_be, arg);
       if (ret != FL_OK)
         return ret;
     }
@@ -146,6 +147,7 @@ static int otf_parse_table_name(
 }
 
 static int otf_parse_internal(
+    uint32_t font_id,
     const uint8_t *buffer,
     const uint8_t *eos,
     const uint8_t *start,
@@ -168,7 +170,7 @@ static int otf_parse_internal(
       const uint32_t length = be32(record[i].length);
       if (ptr + length > eos)
         return FL_CORRUPTED;
-      const int r = otf_parse_table_name(ptr, ptr + length, cb, arg);
+      const int r = otf_parse_table_name(font_id, ptr, ptr + length, cb, arg);
       if (r != FL_OK)
         return r;
     }
@@ -177,7 +179,7 @@ static int otf_parse_internal(
 }
 
 int otf_parse(const uint8_t *buf, size_t size, OTF_NameCallback cb, void *arg) {
-  return otf_parse_internal(buf, buf + size, buf, cb, arg);
+  return otf_parse_internal(0, buf, buf + size, buf, cb, arg);
 }
 
 int ttc_parse(const uint8_t *buf, size_t size, OTF_NameCallback cb, void *arg) {
@@ -198,7 +200,7 @@ int ttc_parse(const uint8_t *buf, size_t size, OTF_NameCallback cb, void *arg) {
     if (ptr >= eos)
       return FL_CORRUPTED;
 
-    const int r = otf_parse_internal(ptr, eos, buf, cb, arg);
+    const int r = otf_parse_internal(i, ptr, eos, buf, cb, arg);
     if (r != FL_OK)
       return r;
   }

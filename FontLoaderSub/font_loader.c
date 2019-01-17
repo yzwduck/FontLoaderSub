@@ -1,9 +1,13 @@
 #include "font_loader.h"
 
 #include <Windows.h>
+#include <bcrypt.h>
 #include "ass_string.h"
 #include "ass_parser.h"
 #include "path.h"
+#include "mock_config.h"
+
+#define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
 
 int fl_init(FL_LoaderCtx *c, allocator_t *alloc) {
   int r;
@@ -22,6 +26,13 @@ int fl_init(FL_LoaderCtx *c, allocator_t *alloc) {
     c->event_cancel = CreateEvent(NULL, TRUE, FALSE, NULL);
     if (!c->event_cancel) {
       r = FL_OS_ERROR;
+      break;
+    }
+    const NTSTATUS status = BCryptOpenAlgorithmProvider(
+        &c->hash_alg, BCRYPT_SHA256_ALGORITHM, NULL, 0);
+    if (!NT_SUCCESS(status)) {
+      r = FL_OS_ERROR;
+      break;
     }
   } while (0);
 
@@ -32,6 +43,7 @@ int fl_init(FL_LoaderCtx *c, allocator_t *alloc) {
 
 int fl_free(FL_LoaderCtx *c) {
   CloseHandle(c->event_cancel);
+  BCryptCloseAlgorithmProvider(c->hash_alg, 0);
   vec_free(&c->loaded_font);
   str_db_free(&c->sub_font);
   str_db_free(&c->font_path);
@@ -53,6 +65,8 @@ static int fl_sub_font_callback(const wchar_t *font, size_t cch, void *arg) {
       font++;
       cch--;
     }
+    if (cch == 0)
+      return FL_OK;
 
     const size_t pos = str_db_tell(&c->sub_font);
     const wchar_t *insert = str_db_push_u16_le(&c->sub_font, font, cch);
@@ -151,8 +165,10 @@ fl_walk_font_callback(const wchar_t *path, WIN32_FIND_DATA *data, void *arg) {
   memmap_t map;
   FlMemMap(path, &map);
   if (map.data) {
+    // skip the base path + '\'
     const wchar_t *tag = path + str_db_tell(&c->font_path) + 1;
     fs_add_font(c->font_set, tag, map.data, map.size);
+    FlMemUnmap(&map);
   }
   return FL_OK;
 }
@@ -186,11 +202,9 @@ int fl_scan_fonts(FL_LoaderCtx *c, const wchar_t *path, const wchar_t *cache) {
     if (r == FL_OK) {
       // load from cache
       str_db_seek(&c->walk_path, 0);
-      if (str_db_push_u16_le(&c->walk_path, str_db_get(&c->font_path, 0), 0) &&
-          str_db_push_u16_le(&c->walk_path, L"\\", 1) &&
-          str_db_push_u16_le(&c->walk_path, cache, 0)) {
-        // ok
-      } else {
+      if (!str_db_push_u16_le(&c->walk_path, str_db_get(&c->font_path, 0), 0) ||
+          !str_db_push_u16_le(&c->walk_path, L"\\", 1) ||
+          !str_db_push_u16_le(&c->walk_path, cache, 0)) {
         r = FL_OUT_OF_MEMORY;
       }
     }
@@ -227,11 +241,9 @@ int fl_scan_fonts(FL_LoaderCtx *c, const wchar_t *path, const wchar_t *cache) {
 int fl_save_cache(FL_LoaderCtx *c, const wchar_t *cache) {
   int r = FL_OK;
   str_db_seek(&c->walk_path, 0);
-  if (str_db_push_u16_le(&c->walk_path, str_db_get(&c->font_path, 0), 0) &&
-      str_db_push_u16_le(&c->walk_path, L"\\", 1) &&
-      str_db_push_u16_le(&c->walk_path, cache, 0)) {
-    // ok
-  } else {
+  if (!str_db_push_u16_le(&c->walk_path, str_db_get(&c->font_path, 0), 0) ||
+      !str_db_push_u16_le(&c->walk_path, L"\\", 1) ||
+      !str_db_push_u16_le(&c->walk_path, cache, 0)) {
     r = FL_OUT_OF_MEMORY;
   }
 
@@ -241,8 +253,227 @@ int fl_save_cache(FL_LoaderCtx *c, const wchar_t *cache) {
   return r;
 }
 
+static int CALLBACK enum_fonts(
+    const LOGFONTW *lfp,
+    const TEXTMETRICW *tmp,
+    DWORD fontType,
+    LPARAM lParam) {
+  int *r = (int *)lParam;
+  *r = 1;
+  return 1;  // continue
+}
+
+static int IsFontInstalled(const wchar_t *face) {
+  if (MOCK_NO_SYS)
+    return 0;
+  int found = 0;
+  HDC dc = GetDC(0);
+  EnumFontFamilies(dc, face, enum_fonts, (LPARAM)&found);
+  ReleaseDC(0, dc);
+  return found;
+}
+
+static int fl_face_loaded(FL_LoaderCtx *c, const wchar_t *face) {
+  const size_t pos = str_db_tell(&c->walk_path);
+  FL_FontMatch *data = c->loaded_font.data;
+  for (size_t i = 0; i != c->loaded_font.n; i++) {
+    FL_FontMatch *m = &data[i];
+    if (m->face == face)
+      return 1;
+  }
+  return 0;
+}
+
+static int fl_file_loaded(FL_LoaderCtx *c, const wchar_t *file) {
+  const size_t pos = str_db_tell(&c->walk_path);
+  FL_FontMatch *data = c->loaded_font.data;
+  for (size_t i = 0; i != c->loaded_font.n; i++) {
+    FL_FontMatch *m = &data[i];
+    if (m->filename == file)
+      return 1;
+  }
+  return 0;
+}
+
+static int fl_hash_loaded(FL_LoaderCtx *c, const uint8_t hash[32]) {
+  const size_t pos = str_db_tell(&c->walk_path);
+  FL_FontMatch *data = c->loaded_font.data;
+  for (size_t i = 0; i != c->loaded_font.n; i++) {
+    FL_FontMatch *m = &data[i];
+    uint8_t dif = 0;
+    for (int j = 0; j != 32; j++) {
+      dif |= m->hash[j] ^ hash[j];
+    }
+    if (!dif)
+      return !!dif;
+  }
+  return 0;
+}
+
+static int
+fl_calc_hash(FL_LoaderCtx *c, const void *data, size_t size, uint8_t res[32]) {
+  int ok = 0;
+  NTSTATUS status;
+  BCRYPT_HASH_HANDLE hash = NULL;
+  void *hash_obj = NULL;
+  DWORD sz_hash_obj = 0;
+  DWORD sz_data = 0;
+  allocator_t *alloc = c->alloc;
+
+  do {
+    status = BCryptGetProperty(
+        c->hash_alg, BCRYPT_OBJECT_LENGTH, (PBYTE)&sz_hash_obj,
+        sizeof sz_hash_obj, &sz_data, 0);
+    if (!NT_SUCCESS(status))
+      break;
+
+    hash_obj = alloc->alloc(hash_obj, sz_hash_obj, alloc->arg);
+    if (hash_obj == NULL)
+      break;
+
+    status =
+        BCryptCreateHash(c->hash_alg, &hash, hash_obj, sz_hash_obj, NULL, 0, 0);
+    if (!NT_SUCCESS(status))
+      break;
+
+    status = BCryptHashData(hash, (PBYTE)data, size, 0);
+    if (!NT_SUCCESS(status))
+      break;
+
+    status = BCryptFinishHash(hash, res, 32, 0);
+    if (!NT_SUCCESS(status))
+      break;
+
+    ok = 1;
+  } while (0);
+
+  BCryptDestroyHash(hash);
+  alloc->alloc(hash_obj, 0, alloc->arg);
+  return ok ? FL_OK : FL_OS_ERROR;
+}
+
+static int
+fl_load_file(FL_LoaderCtx *c, const wchar_t *face, const wchar_t *file) {
+  int r = FL_OK;
+  memmap_t map = {0};
+
+  do {
+    if (vec_prealloc(&c->loaded_font, 1) == 0) {
+      r = FL_OUT_OF_MEMORY;
+      break;
+    }
+
+    // check 1: if file pointer is loaded
+    if (fl_file_loaded(c, file)) {
+      r = FL_DUP;
+      break;
+    }
+
+    // check 2: hash
+    str_db_seek(&c->walk_path, 0);
+    if (!str_db_push_u16_le(&c->walk_path, str_db_get(&c->font_path, 0), 0) ||
+        !str_db_push_u16_le(&c->walk_path, L"\\", 1) ||
+        !str_db_push_u16_le(&c->walk_path, file, 0)) {
+      r = FL_OUT_OF_MEMORY;
+      break;
+    }
+
+    const wchar_t *full_path = str_db_get(&c->walk_path, 0);
+    FlMemMap(full_path, &map);
+    if (map.data == NULL) {
+      r = FL_OS_ERROR;
+      break;
+    }
+
+    uint8_t hash[32] = {0};
+    r = fl_calc_hash(c, map.data, map.size, hash);
+    if (r != FL_OK)
+      break;
+
+    if (fl_hash_loaded(c, hash)) {
+      r = FL_DUP;
+      break;
+    }
+
+    if (MOCK_FAKE_LOAD) {
+      Sleep(50);
+    } else if (AddFontResource(full_path) != 0) {
+      r = FL_OS_ERROR;
+      break;
+    }
+  } while (0);
+
+  FlMemUnmap(&map);
+  if (r != FL_OUT_OF_MEMORY && r != FL_DUP) {
+    FL_FontMatch m = {.flag = (r == FL_OK) ? FL_LOAD_OK : FL_LOAD_ERR,
+                      .face = face,
+                      .filename = file};
+    vec_append(&c->loaded_font, &m, 1);
+  }
+  return r;
+}
+
 int fl_load_fonts(FL_LoaderCtx *c) {
-  return FL_OS_ERROR;
+  // caller: fl_unload_fonts
+
+  int r = FL_OK;
+
+  // pass 1: scan for existing fonts
+  size_t pos_it = 0;
+  const wchar_t *face;
+  while (r == FL_OK && (face = str_db_next(&c->sub_font, &pos_it)) != NULL) {
+    if (WaitForSingleObject(c->event_cancel, 0) != WAIT_TIMEOUT)
+      return FL_OS_ERROR;
+
+    if (IsFontInstalled(face)) {
+      if (vec_prealloc(&c->loaded_font, 1) == 0)
+        r = FL_OUT_OF_MEMORY;
+      if (r == FL_OK) {
+        FL_FontMatch m = {.flag = FL_OS_LOADED, .face = face};
+        vec_append(&c->loaded_font, &m, 1);
+      }
+    }
+  }
+
+  // pass 2: load the missing font
+  const size_t sys_fonts = c->loaded_font.n;
+  pos_it = 0;
+  while (r != FL_OUT_OF_MEMORY &&
+         (face = str_db_next(&c->sub_font, &pos_it)) != NULL) {
+    if (fl_face_loaded(c, face))
+      continue;
+    if (vec_prealloc(&c->loaded_font, 1) == 0) {
+      r = FL_OUT_OF_MEMORY;
+      break;
+    }
+
+    FS_Iter it;
+    if (!fs_iter_new(c->font_set, face, &it)) {
+      FL_FontMatch m = {.flag = FL_LOAD_MISS, .face = face};
+      vec_append(&c->loaded_font, &m, 1);
+    } else {
+      int num_loaded = 0;
+      int num_dup = 0;
+      int num_total = 0;
+      do {
+        if (WaitForSingleObject(c->event_cancel, 0) != WAIT_TIMEOUT)
+          return FL_OS_ERROR;
+
+        r = fl_load_file(c, face, it.info.tag);
+        num_total++;
+        if (r == FL_DUP)
+          num_dup++;
+        if (r == FL_OK)
+          num_loaded++;
+      } while (r != FL_OUT_OF_MEMORY && num_loaded <= 16 && fs_iter_next(&it));
+      if (num_dup == num_total) {
+        FL_FontMatch m = {.flag = FL_LOAD_DUP, .face = face};
+        vec_append(&c->loaded_font, &m, 1);
+      }
+    }
+  }
+
+  return r;
 }
 
 int fl_unload_fonts(FL_LoaderCtx *c) {

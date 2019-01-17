@@ -22,6 +22,7 @@ struct _FS_Set {
 
 typedef struct {
   FS_Set *set;
+  uint32_t id;
   size_t pos_ver;       // point to version
   size_t pos_face;      // point to first face name
   uint32_t count_face;  // number of discovered face name
@@ -39,18 +40,28 @@ typedef struct {
 #define kTagError L"\t!!"
 #define kTagErrorLen (3)
 
-static int fs_parser_name_cb(OTF_NameRecord *r, const wchar_t *str, void *arg) {
+static int fs_parser_name_cb(
+    uint32_t font_id,
+    OTF_NameRecord *r,
+    const wchar_t *str,
+    void *arg) {
   FS_ParseCtx *c = (FS_ParseCtx *)arg;
   FS_Set *s = c->set;
   const uint32_t cch = be16(r->length) / sizeof str[0];
 
+  if (font_id != c->id) {
+    // new font
+    c->id = font_id;
+    c->pos_ver = str_db_tell(&s->db);
+    c->pos_face = c->pos_ver;
+    c->last_lang_id = 0;
+  }
+
+  if (cch == 0)
+    return FL_OK;
+
   if (r->name_id == be16(5)) {
     // this is a version record
-    if (c->pos_face > c->pos_ver) {
-      // this is another font in collection.
-      // update position
-      c->pos_ver = str_db_tell(&s->db);
-    }
     if (c->last_lang_id == 0 || r->lang_id == be16(0x0409)) {
       // no previous version record, or encountered English version.
       // update/overwrite
@@ -65,9 +76,6 @@ static int fs_parser_name_cb(OTF_NameRecord *r, const wchar_t *str, void *arg) {
       c->pos_face = str_db_tell(&s->db);
     }
   } else {
-    // clear the flag
-    c->last_lang_id = 0;
-
     // first, convert to little endian (and insert into database)
     const size_t pos_insert = str_db_tell(&s->db);
     const wchar_t *face = str_db_push_u16_be(&s->db, str, cch);
