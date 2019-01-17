@@ -37,6 +37,21 @@
     <ClCompile Include="ass_string.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="ttf_parser.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="cstl.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="font_set.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="tim_sort.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="font_loader.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="util.h">
@@ -46,6 +61,21 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ass_string.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ttf_parser.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="font_set.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="cstl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="tim_sort.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="font_loader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

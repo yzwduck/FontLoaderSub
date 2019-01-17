@@ -232,12 +232,22 @@
   <ItemGroup>
     <ClCompile Include="ass_parser.c" />
     <ClCompile Include="ass_string.c" />
+    <ClCompile Include="cstl.c" />
+    <ClCompile Include="font_loader.c" />
+    <ClCompile Include="font_set.c" />
     <ClCompile Include="main.c" />
+    <ClCompile Include="tim_sort.c" />
+    <ClCompile Include="ttf_parser.c" />
     <ClCompile Include="util.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ass_parser.h" />
     <ClInclude Include="ass_string.h" />
+    <ClInclude Include="cstl.h" />
+    <ClInclude Include="font_loader.h" />
+    <ClInclude Include="font_set.h" />
+    <ClInclude Include="tim_sort.h" />
+    <ClInclude Include="ttf_parser.h" />
     <ClInclude Include="util.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

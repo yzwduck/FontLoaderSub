@@ -2,6 +2,7 @@
 #include <tchar.h>
 #include "util.h"
 #include "ass_parser.h"
+#include "font_set.h"
 
 static void *mem_realloc(void *existing, size_t size, void *arg) {
   HANDLE heap = (HANDLE)arg;
@@ -20,12 +21,8 @@ int WINAPI _tWinMain(HINSTANCE hInstance,
                      LPTSTR lpCmdLine,
                      int nCmdShow) {
   HANDLE heap = HeapCreate(0, 0, 0);
-  allocator_t alo = {.alloc = mem_realloc, .arg = heap};
-  memmap_t mm;
-  FlMemMap(L"E:\\_processing\\test_01.ass", &mm);
-  size_t cch;
-  wchar_t *txt = FlTextDecode(mm.data, mm.size, &cch, &alo);
-  ass_process_data(txt, cch, NULL, NULL);
+  allocator_t allocator = {.alloc = mem_realloc, .arg = heap};
+
   return 0;
 }
 

@@ -1,5 +1,7 @@
-#include <Windows.h>
 #include "util.h"
+#include <Windows.h>
+#include <Shlwapi.h>
+#include "cstl.h"
 
 int FlMemMap(const wchar_t *path, memmap_t *mmap) {
   mmap->map = NULL;
@@ -159,4 +161,245 @@ wchar_t *FlTextDecode(
     res = FlTextTryDecode(CP_ACP, buf, bytes, cch, alloc);
   }
   return res;
+}
+
+static int is_digit(wchar_t ch) {
+  if (L'0' <= ch && ch <= L'9')
+    return ch - L'0';
+  else
+    return -1;
+}
+
+int FlVersionCmp(const wchar_t *a, const wchar_t *b) {
+  const wchar_t *ptr_a = a, *ptr_b = b;
+  int cmp = 0;
+
+  if (b == NULL)
+    return 1;
+  if (a == NULL)
+    return -1;
+
+  while (*ptr_a && *ptr_b && cmp == 0) {
+    if (is_digit(*ptr_a) >= 0 && is_digit(*ptr_b) >= 0) {
+      // seek to the end of digits
+      const wchar_t *start_a = ptr_a, *start_b = ptr_b;
+      while (is_digit(*ptr_a) >= 0)
+        ptr_a++;
+      while (is_digit(*ptr_b) >= 0)
+        ptr_b++;
+      // compare from right to left
+      const wchar_t *dig_a = ptr_a, *dig_b = ptr_b;
+      while (dig_a != start_a && dig_b != start_b) {
+        dig_a--, dig_b--;
+        cmp = *dig_a - *dig_b;
+      }
+      // leading zero
+      while (dig_a != start_a && dig_a[-1] == L'0') {
+        dig_a--;
+      }
+      while (dig_b != start_b && dig_b[-1] == L'0') {
+        dig_b--;
+      }
+      if (dig_a != start_a) {
+        cmp = 1;
+      } else if (dig_b != start_b) {
+        cmp = -1;
+      }
+    } else if (*ptr_a != *ptr_b) {
+      cmp = *ptr_a - *ptr_b;
+    } else {
+      ptr_a++, ptr_b++;
+    }
+  }
+
+  if (cmp == 0) {
+    if (*ptr_a)
+      cmp = 1;
+    else if (*ptr_b)
+      cmp = -1;
+  }
+
+  return cmp;
+}
+
+int FlStrCmpIW(const wchar_t *a, const wchar_t *b) {
+  return StrCmpIW(a, b);
+}
+
+typedef struct {
+  FL_FileWalkCb callback;
+  void *arg;
+  str_db_t path;
+} FL_WalkDirCtx;
+
+static int FlResolvePath(const wchar_t *path, str_db_t *s) {
+  int r = FL_OK;
+  HANDLE handle;
+
+  do {
+    handle = CreateFile(
+        path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+        OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+    // return value unchecked
+
+    const DWORD name_flags = FILE_NAME_NORMALIZED | VOLUME_NAME_DOS;
+    const DWORD size = GetFinalPathNameByHandle(handle, NULL, 0, name_flags);
+    if (size == 0) {
+      r = FL_OS_ERROR;
+      break;
+    }
+    // allocate buffer
+    str_db_seek(s, 0);
+    const DWORD space = vec_prealloc(&s->vec, size + MAX_PATH / 2);
+    if (space < size) {
+      r = FL_OUT_OF_MEMORY;
+      break;
+    }
+    // get path
+    wchar_t *buffer = (wchar_t *)str_db_get(s, 0);
+    const DWORD cch =
+        GetFinalPathNameByHandle(handle, buffer, space, name_flags);
+    if (cch == 0 || cch >= size) {
+      r = FL_OS_ERROR;
+      break;
+    }
+    // hack, in place push
+    const wchar_t *full_path = str_db_push_u16_le(s, buffer, 0);
+    if (full_path == NULL) {
+      r = FL_OUT_OF_MEMORY;
+      break;
+    }
+  } while (0);
+
+  CloseHandle(handle);
+  return r;
+}
+
+static int WalkDirDfs(FL_WalkDirCtx *ctx) {
+  int r = FL_OK;
+  WIN32_FIND_DATA fd;
+  HANDLE find_handle = FindFirstFile(str_db_get(&ctx->path, 0), &fd);
+  if (find_handle == INVALID_HANDLE_VALUE)
+    return FL_OS_ERROR;
+
+  if (1) {
+    // trim until last '\'
+    size_t pos = str_db_tell(&ctx->path);
+    const wchar_t *buf = str_db_get(&ctx->path, 0);
+    while (pos != 0 && buf[pos - 1] != L'\\')
+      pos--;
+    str_db_seek(&ctx->path, pos);
+  }
+  const size_t pos_root = str_db_tell(&ctx->path);
+
+  do {
+    if (fd.cFileName[0] == L'.' && fd.cFileName[1] == 0 ||
+        fd.cFileName[0] == L'.' && fd.cFileName[1] == L'.' &&
+            fd.cFileName[2] == 0) {
+      // ignore current and parent directory
+    } else {
+      // construct the full name
+      str_db_seek(&ctx->path, pos_root);
+      const wchar_t *filename =
+          str_db_push_u16_le(&ctx->path, fd.cFileName, MAX_PATH);
+      if (filename == NULL) {
+        r = FL_OUT_OF_MEMORY;
+        break;
+      }
+      if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+        // it's a directory, append \*
+        const wchar_t *search = str_db_push_u16_le(&ctx->path, L"\\*", 2);
+        if (search == NULL) {
+          r = FL_OUT_OF_MEMORY;
+          break;
+        }
+        r = WalkDirDfs(ctx);
+      } else {
+        // it's a file, fire callback
+        const wchar_t *full = str_db_get(&ctx->path, 0);
+        r = ctx->callback(full, &fd, ctx->arg);
+      }
+    }
+  } while (r == FL_OK && FindNextFile(find_handle, &fd));
+
+  FindClose(find_handle);
+  return r;
+}
+
+int FlWalkDir(
+    const wchar_t *path,
+    allocator_t *alloc,
+    FL_FileWalkCb callback,
+    void *arg) {
+  int r = FL_OK;
+  FL_WalkDirCtx ctx = {.callback = callback, .arg = arg};
+  str_db_init(&ctx.path, alloc, 0, 0);
+
+  do {
+    const wchar_t *a = str_db_push_u16_le(&ctx.path, path, 0);
+    if (a == NULL) {
+      r = FL_OUT_OF_MEMORY;
+      break;
+    }
+
+    r = WalkDirDfs(&ctx);
+  } while (0);
+
+  str_db_free(&ctx.path);
+  return r;
+}
+
+#include <ShellScalingApi.h>
+
+BOOL PerMonitorDpiHack() {
+  typedef BOOL(WINAPI * PFN_SetProcessDpiAwarenessContext)(
+      DPI_AWARENESS_CONTEXT value);
+  typedef BOOL(WINAPI * PFN_SetProcessDPIAware)(VOID);
+  typedef HRESULT(WINAPI * PFN_SetProcessDpiAwareness)(PROCESS_DPI_AWARENESS);
+  typedef BOOL(WINAPI * PFN_EnablePerMonitorDialogScaling)();
+  PFN_SetProcessDpiAwarenessContext pSetProcessDpiAwarenessContext = NULL;
+  PFN_EnablePerMonitorDialogScaling pEnablePerMonitorDialogScaling = NULL;
+  PFN_SetProcessDPIAware pSetProcessDPIAware = NULL;
+  PFN_SetProcessDpiAwareness pSetProcessDpiAwareness = NULL;
+  DWORD result = 0;
+
+  HMODULE user32 = GetModuleHandle(L"USER32");
+  if (user32 == NULL)
+    return FALSE;
+
+  pSetProcessDpiAwarenessContext =
+      (PFN_SetProcessDpiAwarenessContext)GetProcAddress(
+          user32, "SetProcessDpiAwarenessContext");
+  // find a private function, available on RS1, attempt 1
+  /*
+  pEnablePerMonitorDialogScaling =
+      (PFN_EnablePerMonitorDialogScaling)GetProcAddress(
+          user32, "EnablePerMonitorDialogScaling");
+  */
+  if (pEnablePerMonitorDialogScaling == NULL) {
+    // attempt 2:
+    pEnablePerMonitorDialogScaling =
+        (PFN_EnablePerMonitorDialogScaling)GetProcAddress(user32, (LPCSTR)2577);
+  }
+  pSetProcessDPIAware =
+      (PFN_SetProcessDPIAware)GetProcAddress(user32, "SetProcessDPIAware");
+  pSetProcessDpiAwareness = (PFN_SetProcessDpiAwareness)GetProcAddress(
+      user32, "SetProcessDpiAwarenessInternal");
+
+  if (pSetProcessDpiAwarenessContext) {
+    // preferred, official API, available since Win10 Creators
+    pSetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+  } else if (pSetProcessDpiAwareness) {
+    if (pEnablePerMonitorDialogScaling) {
+      // enable per-monitor scaling on Win10RS1+
+      result = pSetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
+      result = pEnablePerMonitorDialogScaling();
+    } else {
+      result = pSetProcessDpiAwareness(PROCESS_SYSTEM_DPI_AWARE);
+    }
+  } else if (pSetProcessDPIAware) {
+    result = pSetProcessDPIAware();
+  }
+
+  return 0;
 }
