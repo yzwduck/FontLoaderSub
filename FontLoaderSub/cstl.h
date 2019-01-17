@@ -4,8 +4,8 @@
 
 typedef struct _vec_t {
   union {
-    void *data;
     wchar_t *str;  // for easy debugging
+    void *data;
   };
   size_t n;
   size_t capacity;
@@ -20,6 +20,8 @@ int vec_free(vec_t *v);
 size_t vec_prealloc(vec_t *v, size_t n);
 
 int vec_append(vec_t *v, void *data, size_t n);
+
+int vec_clear(vec_t *v);
 
 typedef struct _str_buf_t {
   vec_t vec;

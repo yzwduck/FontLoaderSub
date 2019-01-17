@@ -5,6 +5,8 @@
 
 int FlResolvePath(const wchar_t *path, str_db_t *s);
 
+size_t FlPathParent(str_db_t *path);
+
 typedef int (
     *FL_FileWalkCb)(const wchar_t *path, WIN32_FIND_DATA *data, void *arg);
 

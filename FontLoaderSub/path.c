@@ -49,6 +49,16 @@ int FlResolvePath(const wchar_t *path, str_db_t *s) {
   return r;
 }
 
+size_t FlPathParent(str_db_t *path) {
+  size_t pos = str_db_tell(path);
+  wchar_t *buf = (wchar_t *)str_db_get(path, 0);
+  while (pos != 0 && buf[pos - 1] != L'\\')
+    pos--;
+  buf[pos] = 0;
+  str_db_seek(path, pos);
+  return pos;
+}
+
 static int WalkDirDfs(FL_WalkDirCtx *ctx) {
   int r = FL_OK;
   WIN32_FIND_DATA fd;
@@ -60,15 +70,7 @@ static int WalkDirDfs(FL_WalkDirCtx *ctx) {
     // return FL_OS_ERROR;
   }
 
-  if (1) {
-    // trim until last '\'
-    size_t pos = str_db_tell(&ctx->path);
-    const wchar_t *buf = str_db_get(&ctx->path, 0);
-    while (pos != 0 && buf[pos - 1] != L'\\')
-      pos--;
-    str_db_seek(&ctx->path, pos);
-  }
-  const size_t pos_root = str_db_tell(&ctx->path);
+  const size_t pos_root = FlPathParent(&ctx->path);
 
   do {
     if (fd.cFileName[0] == L'.' && fd.cFileName[1] == 0 ||

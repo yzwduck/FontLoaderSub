@@ -2,6 +2,7 @@
 #include <tchar.h>
 #include "util.h"
 #include "font_loader.h"
+#include "path.h"
 
 static void *mem_realloc(void *existing, size_t size, void *arg) {
   HANDLE heap = (HANDLE)arg;
@@ -22,9 +23,13 @@ int WINAPI _tWinMain(HINSTANCE hInstance,
   HANDLE heap = HeapCreate(0, 0, 0);
   allocator_t allocator = {.alloc = mem_realloc, .arg = heap};
 
+  wchar_t buf[MAX_PATH];
+  GetModuleFileName(NULL, buf, MAX_PATH);
   FL_LoaderCtx c;
   fl_init(&c, &allocator);
-  fl_add_subs(&c, L"E:\\_processing\\");
+  // fl_add_subs(&c, L"E:\\_processing\\");
+  fl_scan_fonts(&c, L"E:\\Data\\Fonts", NULL);
+  fl_save_cache(&c, L"fc-subs.db");
 
   return 0;
 }

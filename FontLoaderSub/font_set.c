@@ -46,6 +46,11 @@ static int fs_parser_name_cb(OTF_NameRecord *r, const wchar_t *str, void *arg) {
 
   if (r->name_id == be16(5)) {
     // this is a version record
+    if (c->pos_face > c->pos_ver) {
+      // this is another font in collection.
+      // update position
+      c->pos_ver = str_db_tell(&s->db);
+    }
     if (c->last_lang_id == 0 || r->lang_id == be16(0x0409)) {
       // no previous version record, or encountered English version.
       // update/overwrite
@@ -145,8 +150,9 @@ int fs_add_font(FS_Set *s, const wchar_t *tag, void *buf, size_t size) {
       ok = 0;
     }
   }
+
+  s->stat.num_file++;
   if (ok) {
-    s->stat.num_file++;
     s->stat.num_face += ctx.count_face;
   } else {
     // try preserve error message
@@ -157,6 +163,7 @@ int fs_add_font(FS_Set *s, const wchar_t *tag, void *buf, size_t size) {
     if (!(m1 && m2)) {
       // completely rollback
       str_db_seek(db, pos_filename);
+      s->stat.num_file--;
     }
   }
   return r;
@@ -313,7 +320,7 @@ int fs_cache_load(const wchar_t *path, allocator_t *alloc, FS_Set **out) {
 
   do {
     r = FlMemMap(path, &map);
-    if (r != FL_OK)
+    if (r != FL_OK || map.data == NULL)
       break;
 
     r = FL_UNRECOGNIZED;
@@ -327,7 +334,7 @@ int fs_cache_load(const wchar_t *path, allocator_t *alloc, FS_Set **out) {
 
     // ensure NUL terminated
     const wchar_t *buf_tail = (wchar_t *)((char *)map.data + head->size);
-    if (buf_tail[-1] != 0 || buf_tail[-2] != 0)
+    if (buf_tail[-1] != 0)
       break;
 
     r = FL_OUT_OF_MEMORY;
@@ -353,9 +360,12 @@ int fs_cache_load(const wchar_t *path, allocator_t *alloc, FS_Set **out) {
 
 int fs_cache_dump(FS_Set *s, const wchar_t *path) {
   int ok = 0;
+  DWORD flags = FILE_ATTRIBUTE_NORMAL;
+  if (s->stat.num_file == 0)
+    flags |= FILE_FLAG_DELETE_ON_CLOSE;
+
   HANDLE h = CreateFile(
-      path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS,
-      FILE_ATTRIBUTE_NORMAL, NULL);
+      path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, flags, NULL);
   do {
     if (h == INVALID_HANDLE_VALUE)
       break;

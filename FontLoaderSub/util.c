@@ -8,8 +8,9 @@ int FlMemMap(const wchar_t *path, memmap_t *mmap) {
   mmap->size = 0;
   HANDLE h;
   do {
-    h = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING,
-                   FILE_ATTRIBUTE_NORMAL, NULL);
+    h = CreateFile(
+        path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, NULL,
+        OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (h == INVALID_HANDLE_VALUE)
       break;
     mmap->map = CreateFileMapping(h, NULL, PAGE_READONLY, 0, 0, NULL);

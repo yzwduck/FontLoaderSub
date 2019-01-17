@@ -50,6 +50,11 @@ int vec_append(vec_t *v, void *data, size_t n) {
   return 1;
 }
 
+int vec_clear(vec_t *v) {
+  v->n = 0;
+  return 0;
+}
+
 int str_db_init(
     str_db_t *s,
     allocator_t *alloc,
