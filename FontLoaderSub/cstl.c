@@ -163,7 +163,7 @@ void str_db_loads(str_db_t *s, const wchar_t *str, size_t cch, wchar_t ex_pad) {
       .alloc = NULL
     },
     .ex_pad = ex_pad,
-    .pad_len = ex_pad ? 1 : 0
+    .pad_len = ex_pad ? 2 : 1
   };
   // clang-format on
 }

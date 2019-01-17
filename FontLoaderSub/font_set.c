@@ -342,7 +342,7 @@ int fs_cache_load(const wchar_t *path, allocator_t *alloc, FS_Set **out) {
 
     // ensure NUL terminated
     const wchar_t *buf_tail = (wchar_t *)((char *)map.data + head->size);
-    if (buf_tail[-1] != 0)
+    if (buf_tail[-1] != 0 && buf_tail[-2] != 0)
       break;
 
     r = FL_OUT_OF_MEMORY;
