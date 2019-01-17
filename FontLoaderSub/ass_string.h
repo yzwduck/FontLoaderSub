@@ -25,3 +25,7 @@ int ass_strncmp(const wchar_t *s1, const wchar_t *s2, size_t cch);
 int ass_strncasecmp(const wchar_t *s1, const wchar_t *s2, size_t cch);
 
 const wchar_t *ass_strnchr(const wchar_t *s, wchar_t ch, size_t cch);
+
+size_t ass_strlen(const wchar_t *str);
+
+size_t ass_strnlen(const wchar_t *str, size_t n);

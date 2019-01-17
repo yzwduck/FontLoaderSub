@@ -239,6 +239,7 @@
     <ClCompile Include="tim_sort.c" />
     <ClCompile Include="ttf_parser.c" />
     <ClCompile Include="util.c" />
+    <ClCompile Include="path.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ass_parser.h" />
@@ -249,6 +250,7 @@
     <ClInclude Include="tim_sort.h" />
     <ClInclude Include="ttf_parser.h" />
     <ClInclude Include="util.h" />
+    <ClInclude Include="path.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

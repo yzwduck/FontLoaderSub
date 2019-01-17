@@ -5,9 +5,14 @@
 #include "font_set.h"
 
 typedef struct {
+  allocator_t *alloc;
   str_db_t sub_font;
   str_db_t db_path;
+  str_db_t walk_path;
   FS_Set *font_set;
+
+  uint32_t num_sub;
+  uint32_t num_sub_font;
 
   void *event_cancel;
 } FL_LoaderCtx;
@@ -18,7 +23,7 @@ int fl_free(FL_LoaderCtx *c);
 
 int fl_cancel(FL_LoaderCtx *c);
 
-int fl_add_subs(FL_LoaderCtx *c, const wchar_t *path[], size_t num);
+int fl_add_subs(FL_LoaderCtx *c, const wchar_t *path);
 
 int fl_load_fonts(FL_LoaderCtx *c, const wchar_t *path, const wchar_t *cache);
 

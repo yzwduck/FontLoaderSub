@@ -3,7 +3,10 @@
 #include "util.h"
 
 typedef struct _vec_t {
-  void *data;
+  union {
+    void *data;
+    wchar_t *str;  // for easy debugging
+  };
   size_t n;
   size_t capacity;
   size_t size;

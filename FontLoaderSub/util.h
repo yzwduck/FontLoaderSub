@@ -53,13 +53,4 @@ int FlVersionCmp(const wchar_t *a, const wchar_t *b);
 
 int FlStrCmpIW(const wchar_t *a, const wchar_t *b);
 
-typedef int (
-    *FL_FileWalkCb)(const wchar_t *path, WIN32_FIND_DATA *data, void *arg);
-
-int FlWalkDir(
-    const wchar_t *path,
-    allocator_t *alloc,
-    FL_FileWalkCb callback,
-    void *arg);
-
 BOOL PerMonitorDpiHack();

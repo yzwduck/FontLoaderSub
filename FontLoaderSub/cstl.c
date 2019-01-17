@@ -50,22 +50,6 @@ int vec_append(vec_t *v, void *data, size_t n) {
   return 1;
 }
 
-static size_t str_len(const wchar_t *str) {
-  const wchar_t *p;
-  for (p = str; *p; p++) {
-    // nop
-  }
-  return p - str;
-}
-
-static size_t str_nlen(const wchar_t *str, size_t n) {
-  for (size_t i = 0; i != n; i++) {
-    if (str[i] == 0)
-      return i;
-  }
-  return n;
-}
-
 int str_db_init(
     str_db_t *s,
     allocator_t *alloc,
@@ -88,10 +72,12 @@ size_t str_db_tell(str_db_t *s) {
 size_t str_db_seek(str_db_t *s, size_t pos) {
   if (pos <= s->vec.capacity)
     s->vec.n = pos;
-  if (1 && pos < s->vec.capacity) {
+#if 0
+  if (pos < s->vec.capacity) {
     wchar_t *buf = (wchar_t *)s->vec.data;
     buf[pos] = 0;
   }
+#endif
   return s->vec.n;
 }
 
@@ -100,7 +86,7 @@ const wchar_t *str_db_next(str_db_t *s, size_t *next_pos) {
     return NULL;
   const wchar_t *ret = str_db_get(s, *next_pos);
   if (ret != NULL) {
-    const size_t len = str_len(ret);
+    const size_t len = ass_strlen(ret);
     *next_pos += len + s->pad_len;
   }
   return ret;
@@ -122,7 +108,7 @@ const wchar_t *str_db_push_prefix(str_db_t *s, const wchar_t *str, size_t cch) {
 }
 
 const wchar_t *str_db_push_u16_le(str_db_t *s, const wchar_t *str, size_t cch) {
-  const size_t len = cch ? str_nlen(str, cch) : str_len(str);
+  const size_t len = cch ? ass_strnlen(str, cch) : ass_strlen(str);
   const size_t len_all = len + s->pad_len;  // always NUL terminated
   if (vec_prealloc(&s->vec, len_all + 1) < len_all + 1)
     return NULL;
@@ -150,7 +136,7 @@ const wchar_t *str_db_push_u16_be(str_db_t *s, const wchar_t *str, size_t cch) {
 }
 
 const wchar_t *str_db_str(str_db_t *s, size_t pos, const wchar_t *str) {
-  const size_t len = str_len(str) + 1;
+  const size_t len = ass_strlen(str) + 1;
   size_t it = pos;
   const wchar_t *sub;
   while ((sub = str_db_next(s, &it)) != NULL) {

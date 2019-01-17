@@ -1,8 +1,7 @@
 #include <Windows.h>
 #include <tchar.h>
 #include "util.h"
-#include "ass_parser.h"
-#include "font_set.h"
+#include "font_loader.h"
 
 static void *mem_realloc(void *existing, size_t size, void *arg) {
   HANDLE heap = (HANDLE)arg;
@@ -22,6 +21,10 @@ int WINAPI _tWinMain(HINSTANCE hInstance,
                      int nCmdShow) {
   HANDLE heap = HeapCreate(0, 0, 0);
   allocator_t allocator = {.alloc = mem_realloc, .arg = heap};
+
+  FL_LoaderCtx c;
+  fl_init(&c, &allocator);
+  fl_add_subs(&c, L"E:\\_processing\\");
 
   return 0;
 }
