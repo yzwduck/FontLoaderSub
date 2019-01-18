@@ -37,12 +37,7 @@ int FlResolvePath(const wchar_t *path, str_db_t *s) {
       r = FL_OS_ERROR;
       break;
     }
-    // hack, in place push
-    const wchar_t *full_path = str_db_push_u16_le(s, buffer, 0);
-    if (full_path == NULL) {
-      r = FL_OUT_OF_MEMORY;
-      break;
-    }
+    s->vec.n = cch;
   } while (0);
 
   CloseHandle(handle);
@@ -132,5 +127,7 @@ int FlWalkDir(
 int FlWalkDirStr(str_db_t *path, FL_FileWalkCb callback, void *arg) {
   // assume path->pad_len == 0
   FL_WalkDirCtx ctx = {.callback = callback, .arg = arg, .path = *path};
-  return WalkDirDfs(&ctx);
+  const int r = WalkDirDfs(&ctx);
+  *path = ctx.path;
+  return r;
 }
