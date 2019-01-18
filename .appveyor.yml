@@ -2,10 +2,26 @@ image: Visual Studio 2017
 
 clone_depth: 5
 
-platform: x86
-configuration:
- - Minimize
- - Release
+install:
+- ps: |
+    $env:COMM_TAG = $(git describe --always)
+    $env:BUILD = "{0}-{1}" -f $env:APPVEYOR_PROJECT_NAME, $env:COMM_TAG
+
+build_script:
+- msbuild /p:Platform=x86 /p:Configuration=Minimize
+- msbuild /p:Platform=x86 /p:Configuration=Release
+- msbuild /p:Platform=x64 /p:Configuration=Minimize
+- msbuild /p:Platform=x64 /p:Configuration=Release
+
+after_build:
+- ps: |
+    $CONFIGS = @(
+        "Minimize";
+        "Release";
+    )
+    foreach ($conf in $CONFIGS) {
+        7z a "$env:BUILD-$conf.zip" "$conf\" "-xr!*.iobj" "-xr!*.ipdb"
+    }
 
 artifacts:
- - path: '$(configuration)\*.exe'
+- path: '*.zip'
