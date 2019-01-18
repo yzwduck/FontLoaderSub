@@ -1,6 +1,7 @@
 #include <Windows.h>
 #include <tchar.h>
 #include <CommCtrl.h>
+#include <Shobjidl.h>
 
 #include "util.h"
 #include "font_loader.h"
@@ -51,6 +52,7 @@ typedef struct {
   HANDLE thread;
   TASKDIALOGCONFIG dlg_work;
   TASKDIALOGCONFIG dlg_done;
+  ITaskbarList3 *taskbar_list3;
 } FL_AppCtx;
 
 static void AppHelpUsage(FL_AppCtx *c, HWND hWnd) {
@@ -235,6 +237,10 @@ static HRESULT CALLBACK DlgWorkProc(
     DWORD r = WaitForSingleObject(c->thread, 0);
     if (r != WAIT_TIMEOUT) {
       // done, or error
+      if (c->taskbar_list3) {
+        c->taskbar_list3->lpVtbl->SetProgressState(
+            c->taskbar_list3, hWnd, TBPF_NOPROGRESS);
+      }
       if (c->app_state == APP_DONE) {
         if (AppBuildLog(c)) {
           c->dlg_done.pszExpandedInformation = str_db_get(&c->log, 0);
@@ -245,6 +251,11 @@ static HRESULT CALLBACK DlgWorkProc(
         SendMessage(hWnd, TDM_NAVIGATE_PAGE, 0, (LPARAM)&c->dlg_done);
       } else {
         PostMessage(hWnd, WM_CLOSE, 0, 0);
+      }
+    } else {
+      if (c->taskbar_list3) {
+        c->taskbar_list3->lpVtbl->SetProgressState(
+            c->taskbar_list3, hWnd, TBPF_INDETERMINATE);
       }
     }
   }
@@ -324,6 +335,17 @@ static int AppInit(FL_AppCtx *c, HINSTANCE hInst, allocator_t *alloc) {
 
   if (MOCK_FONT_PATH)
     c->font_path = MOCK_FONT_PATH;
+
+  if (SUCCEEDED(OleInitialize(NULL))) {
+    if (SUCCEEDED(CoCreateInstance(
+            &CLSID_TaskbarList, NULL, CLSCTX_INPROC_SERVER, &IID_ITaskbarList3,
+            (void **)&c->taskbar_list3))) {
+      if (FAILED(c->taskbar_list3->lpVtbl->HrInit(c->taskbar_list3))) {
+        c->taskbar_list3->lpVtbl->Release(c->taskbar_list3);
+        c->taskbar_list3 = NULL;
+      }
+    }
+  }
 
   return 1;
 }
