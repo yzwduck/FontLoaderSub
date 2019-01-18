@@ -29,6 +29,8 @@ int fs_create(allocator_t *alloc, FS_Set **out);
 
 int fs_free(FS_Set *s);
 
+int fs_stat(FS_Set *s, FS_Stat *stat);
+
 int fs_add_font(FS_Set *s, const wchar_t *tag, void *buf, size_t size);
 
 int fs_build_index(FS_Set *s);

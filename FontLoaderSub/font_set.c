@@ -126,6 +126,13 @@ int fs_free(FS_Set *s) {
   return FL_OK;
 }
 
+int fs_stat(FS_Set *s, FS_Stat *stat) {
+  if (s) {
+    *stat = s->stat;
+  }
+  return 0;
+}
+
 int fs_add_font(FS_Set *s, const wchar_t *tag, void *buf, size_t size) {
   int ok = 0, r;
   str_db_t *db = &s->db;
@@ -370,7 +377,10 @@ int fs_cache_load(const wchar_t *path, allocator_t *alloc, FS_Set **out) {
 
   if (!ok) {
     fs_free(s);
+    FlMemUnmap(&map);
     s = NULL;
+  } else {
+    s->map = map;
   }
 
   *out = s;

@@ -28,6 +28,9 @@ typedef struct {
 
   uint32_t num_sub;
   uint32_t num_sub_font;
+  uint32_t num_font_loaded;
+  uint32_t num_font_failed;
+  uint32_t num_font_unmatch;
 
   void *event_cancel;
   void *hash_alg;
