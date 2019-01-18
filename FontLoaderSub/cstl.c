@@ -127,6 +127,9 @@ const wchar_t *str_db_push_u16_le(str_db_t *s, const wchar_t *str, size_t cch) {
   ret[len] = 0;
 
   s->vec.n += len_all;
+  if (s->vec.n >= s->vec.capacity) {
+    FlBreak();
+  }
   return ret;
 }
 

@@ -28,7 +28,7 @@ inline uint32_t be32(uint32_t num) {
 }
 
 inline void FlBreak() {
-  DebugBreak();
+  // DebugBreak();
 }
 
 typedef struct _allocator_t {

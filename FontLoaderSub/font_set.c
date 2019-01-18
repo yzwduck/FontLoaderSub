@@ -267,7 +267,10 @@ int fs_iter_new(FS_Set *s, const wchar_t *face, FS_Iter *it) {
     }
   }
   if (a != b || a != m) {
-    *it = (FS_Iter){0};
+    // *it = (FS_Iter){0};
+    it->set = NULL;
+    it->query_id = 0;
+    it->index_id = 0;
     return 0;
   } else {
     // found, skip to first match
@@ -291,7 +294,7 @@ int fs_iter_new(FS_Set *s, const wchar_t *face, FS_Iter *it) {
 
 static size_t str_cmp_x(const wchar_t *a, const wchar_t *b) {
   size_t r;
-  for (r = 0; a[r] == b[r]; r++) {
+  for (r = 0; a[r] == b[r] && a[r]; r++) {
     // nop;
   }
   return r;
@@ -299,6 +302,11 @@ static size_t str_cmp_x(const wchar_t *a, const wchar_t *b) {
 
 int fs_iter_next(FS_Iter *it) {
   FS_Set *s = it->set;
+  if (s == NULL)
+    return 0;
+  if (it->index_id == s->stat.num_face)
+    return 0;
+  it->index_id++;
   const wchar_t *face = s->index[it->query_id].face;
   const wchar_t *ver = s->index[it->query_id].ver;
 
@@ -317,7 +325,8 @@ int fs_iter_next(FS_Iter *it) {
       return 1;
     }
   }
-  *it = (FS_Iter){0};
+  // *it = (FS_Iter){0};
+  it->set = NULL;
   return 0;
 }
 
@@ -328,8 +337,10 @@ int fs_cache_load(const wchar_t *path, allocator_t *alloc, FS_Set **out) {
 
   do {
     r = FlMemMap(path, &map);
-    if (r != FL_OK || map.data == NULL)
+    if (map.data == NULL) {
+      r = FL_OS_ERROR;
       break;
+    }
 
     r = FL_UNRECOGNIZED;
     FS_CacheHeader *head = map.data;
