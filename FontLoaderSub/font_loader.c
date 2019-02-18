@@ -542,6 +542,9 @@ int fl_unload_fonts(FL_LoaderCtx *c) {
     }
   }
   vec_clear(&c->loaded_font);
+  c->num_font_loaded = 0;
+  c->num_font_failed = 0;
+  c->num_font_unmatch = 0;
 
   return FL_OK;
 }
