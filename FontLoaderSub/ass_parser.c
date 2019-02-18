@@ -123,6 +123,10 @@ parse_tags(ASS_Track *track, const wchar_t *p, const wchar_t *end, int nested) {
 }
 
 static void parse_events(ASS_Track *track, ASS_Event *event) {
+  if (event->Text.begin == NULL) {
+    return;
+  }
+
   const wchar_t *p = event->Text.begin;
   const wchar_t *ep = event->Text.end;
   const wchar_t *q;
@@ -158,7 +162,7 @@ process_event_tail(ASS_Track *track, ASS_Range *line, int n_ignored) {
     while (next_tok(format, tag)) {
       const int r = next_tok(line, tok);
       if (r && tag->end - tag->begin == 4 &&
-          !ass_strncasecmp(tag->begin, L"text", 4)) {
+          ass_strncasecmp(tag->begin, L"text", 4) == 0) {
         // till the end
         tok->end = line->end;
         event.Text = *tok;
@@ -176,16 +180,18 @@ process_styles(ASS_Track *track, const wchar_t *begin, const wchar_t *end) {
 
   *format = track->format_string;
   if (format->begin == format->end) {
+    // use default fallback, assuming fontname at column 2
     next_tok(line, tok);
     const int r = next_tok(line, tok);
     if (r) {
       fire_font_cb(track, tok);
     }
   } else {
+    // using format string
     while (next_tok(format, tag)) {
       const int r = next_tok(line, tok);
       if (r && tag->end - tag->begin == 8 &&
-          !ass_strncasecmp(tag->begin, L"fontname", 8)) {
+          ass_strncasecmp(tag->begin, L"fontname", 8) == 0) {
         fire_font_cb(track, tok);
       }
     }
