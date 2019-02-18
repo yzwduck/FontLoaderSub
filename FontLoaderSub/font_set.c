@@ -369,7 +369,7 @@ int fs_cache_load(const wchar_t *path, allocator_t *alloc, FS_Set **out) {
       break;
     str_db_loads(
         &s->db, (const wchar_t *)&head[1],
-        (head->size - sizeof head) / sizeof(wchar_t), '\n');
+        (head->size - sizeof head[0]) / sizeof(wchar_t), '\n');
     s->stat = head->stat;
 
     ok = 1;
