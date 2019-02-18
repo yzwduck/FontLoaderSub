@@ -227,7 +227,7 @@ static HRESULT CALLBACK DlgWorkProc(
     if (wParam == IDCANCEL) {
       c->cancelled = 1;
       fl_cancel(&c->loader);
-      // close dialog if worker is done
+      // close dialog only if worker is done
       if (WaitForSingleObject(c->thread, 0) == WAIT_TIMEOUT)
         return S_FALSE;
       AppUpdateStatus(c);
@@ -363,11 +363,17 @@ static int AppRun(FL_AppCtx *c) {
 
 FL_AppCtx g_app;
 
+int test_main();
+
 int WINAPI _tWinMain(
     HINSTANCE hInstance,
     HINSTANCE hPrevInstance,
     LPTSTR lpCmdLine,
     int nCmdShow) {
+  int r = 0; // test_main();
+  if (r) 
+    return r;
+
   PerMonitorDpiHack();
 
   HANDLE heap = HeapCreate(0, 0, 0);
