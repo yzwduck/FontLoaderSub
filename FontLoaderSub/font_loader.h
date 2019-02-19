@@ -52,3 +52,5 @@ int fl_save_cache(FL_LoaderCtx *c, const wchar_t *cache);
 int fl_load_fonts(FL_LoaderCtx *c);
 
 int fl_unload_fonts(FL_LoaderCtx *c);
+
+int fl_cache_fonts(FL_LoaderCtx *c, HANDLE evt_cancel);

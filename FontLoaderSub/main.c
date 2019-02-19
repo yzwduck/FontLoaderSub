@@ -49,7 +49,10 @@ typedef struct {
   wchar_t exe_path[MAX_PATH];
 
   HWND work_hwnd;
-  HANDLE thread;
+  HANDLE thread_load;
+  HANDLE thread_cache;
+  HANDLE evt_stop_cache;
+
   TASKDIALOGCONFIG dlg_work;
   TASKDIALOGCONFIG dlg_done;
   ITaskbarList3 *taskbar_list3;
@@ -206,6 +209,17 @@ static DWORD WINAPI AppWorker(LPVOID param) {
   return 0;
 }
 
+static DWORD WINAPI AppCacheWorker(LPVOID param) {
+  FL_AppCtx *c = (FL_AppCtx *)param;
+
+  while (1) {
+    fl_cache_fonts(&c->loader, c->evt_stop_cache);
+    if (WaitForSingleObject(c->evt_stop_cache, 5 * 60 * 1000) != WAIT_TIMEOUT)
+      break;
+  }
+  return 0;
+}
+
 static HRESULT CALLBACK DlgWorkProc(
     HWND hWnd,
     UINT uNotification,
@@ -219,8 +233,8 @@ static HRESULT CALLBACK DlgWorkProc(
     AppUpdateStatus(c);
 
     DWORD thread_id;
-    c->thread = CreateThread(NULL, 0, AppWorker, c, 0, &thread_id);
-    if (c->thread == NULL) {
+    c->thread_load = CreateThread(NULL, 0, AppWorker, c, 0, &thread_id);
+    if (c->thread_load == NULL) {
       c->cancelled = 1;
     }
   } else if (uNotification == TDN_BUTTON_CLICKED) {
@@ -228,14 +242,16 @@ static HRESULT CALLBACK DlgWorkProc(
       c->cancelled = 1;
       fl_cancel(&c->loader);
       // close dialog only if worker is done
-      if (WaitForSingleObject(c->thread, 0) == WAIT_TIMEOUT)
+      if (WaitForSingleObject(c->thread_load, 0) == WAIT_TIMEOUT)
         return S_FALSE;
       AppUpdateStatus(c);
     }
   } else if (uNotification == TDN_TIMER) {
     AppUpdateStatus(c);
-    DWORD r = WaitForSingleObject(c->thread, 0);
+    DWORD r = WaitForSingleObject(c->thread_load, 0);
     if (r != WAIT_TIMEOUT) {
+      CloseHandle(c->thread_load);
+      c->thread_load = NULL;
       // done, or error
       if (c->taskbar_list3) {
         c->taskbar_list3->lpVtbl->SetProgressState(
@@ -270,10 +286,16 @@ static HRESULT CALLBACK DlgDoneProc(
     LONG_PTR dwRefData) {
   FL_AppCtx *c = (FL_AppCtx *)dwRefData;
   if (uNotification == TDN_NAVIGATED) {
+    c->thread_cache = NULL;
+
     FS_Stat stat = {0};
     fs_stat(c->loader.font_set, &stat);
     if (c->loader.num_sub_font == 0 || stat.num_face == 0) {
       AppHelpUsage(c, hWnd);
+    } else {
+      DWORD thread_id;
+      ResetEvent(c->evt_stop_cache);
+      c->thread_cache = CreateThread(NULL, 0, AppCacheWorker, c, 0, &thread_id);
     }
   } else if (uNotification == TDN_HYPERLINK_CLICKED) {
     ShellExecute(NULL, NULL, (LPCWSTR)lParam, NULL, NULL, SW_SHOW);
@@ -282,6 +304,12 @@ static HRESULT CALLBACK DlgDoneProc(
       if (wParam != IDRETRY) {
         c->req_exit = 1;
       }
+      SetEvent(c->evt_stop_cache);
+      if (WaitForSingleObject(c->thread_cache, 1000) != WAIT_OBJECT_0) {
+        TerminateThread(c->thread_cache, 2);
+      }
+      CloseHandle(c->thread_cache);
+      c->thread_cache = NULL;
       c->app_state = APP_UNLOAD_FONT;
       SendMessage(hWnd, TDM_NAVIGATE_PAGE, 0, (LPARAM)&c->dlg_work);
       return S_FALSE;
@@ -336,6 +364,10 @@ static int AppInit(FL_AppCtx *c, HINSTANCE hInst, allocator_t *alloc) {
   if (MOCK_FONT_PATH)
     c->font_path = MOCK_FONT_PATH;
 
+  c->evt_stop_cache = CreateEvent(NULL, TRUE, FALSE, NULL);
+  if (c->evt_stop_cache == NULL)
+    return 0;
+
   if (SUCCEEDED(OleInitialize(NULL))) {
     if (SUCCEEDED(CoCreateInstance(
             &CLSID_TaskbarList, NULL, CLSCTX_INPROC_SERVER, &IID_ITaskbarList3,
@@ -354,8 +386,8 @@ static int AppRun(FL_AppCtx *c) {
   TaskDialogIndirect(&c->dlg_work, NULL, NULL, NULL);
 
   // clean up
-  if (WaitForSingleObject(c->thread, 16384) == WAIT_TIMEOUT) {
-    TerminateThread(c->thread, 1);
+  if (WaitForSingleObject(c->thread_load, 16384) == WAIT_TIMEOUT) {
+    TerminateThread(c->thread_load, 1);
     fl_unload_fonts(&c->loader);
   }
   return 0;

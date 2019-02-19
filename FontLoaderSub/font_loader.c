@@ -515,7 +515,14 @@ int fl_load_fonts(FL_LoaderCtx *c) {
   return FL_OK;
 }
 
-int fl_unload_fonts(FL_LoaderCtx *c) {
+typedef int (*WalkLoadedCallback)(
+    FL_LoaderCtx *c,
+    size_t i,
+    const wchar_t *path,
+    void *param);
+
+static int
+fl_walk_loaded_fonts(FL_LoaderCtx *c, WalkLoadedCallback cb, void *param) {
   str_db_seek(&c->walk_path, 0);
   const wchar_t *font_path = str_db_get(&c->font_path, 0);
   if (font_path == NULL || font_path[0] == 0)
@@ -532,19 +539,70 @@ int fl_unload_fonts(FL_LoaderCtx *c) {
     str_db_seek(&c->walk_path, pos);
     if (m->filename && str_db_push_u16_le(&c->walk_path, m->filename, 0)) {
       const wchar_t *path = str_db_get(&c->walk_path, 0);
-      RemoveFontResource(path);
-      if (MOCK_DELAY_FONT) {
-        Sleep(MOCK_DELAY_FONT);
-      }
-      if (m->flag & FL_LOAD_OK) {
-        c->num_font_loaded--;
-      }
+      // trigger callback
+      const int ret = cb(c, i, path, param);
+      if (ret != FL_OK)
+        return ret;
     }
   }
+
+  return FL_OK;
+}
+
+static int
+fl_unload_cb(FL_LoaderCtx *c, size_t i, const wchar_t *path, void *param) {
+  FL_FontMatch *data = c->loaded_font.data;
+  FL_FontMatch *m = &data[i];
+  RemoveFontResource(path);
+  if (MOCK_DELAY_FONT) {
+    Sleep(MOCK_DELAY_FONT);
+  }
+  if (m->flag & FL_LOAD_OK) {
+    c->num_font_loaded--;
+  }
+  return 0;
+}
+
+int fl_unload_fonts(FL_LoaderCtx *c) {
+  fl_walk_loaded_fonts(c, fl_unload_cb, NULL);
   vec_clear(&c->loaded_font);
   c->num_font_loaded = 0;
   c->num_font_failed = 0;
   c->num_font_unmatch = 0;
 
+  return FL_OK;
+}
+
+static int
+fl_cache_cb(FL_LoaderCtx *c, size_t i, const wchar_t *path, void *param) {
+  HANDLE evt_cancel = *(HANDLE *)param;
+  if (WaitForSingleObject(evt_cancel, 0) != WAIT_TIMEOUT) {
+    return FL_OS_ERROR;
+  }
+
+  // read the file
+  memmap_t mmap;
+  DWORD tick = 0;
+  FlMemMap(path, &mmap);
+  const size_t step = 4 * 1024;
+  volatile char chksum = 0;
+  volatile const char *data = mmap.data;
+  for (size_t pos = 0; pos < mmap.size; pos += step) {
+    const DWORD now = GetTickCount();
+    if (now - tick > 10) {
+      tick = now;
+      if (WaitForSingleObject(evt_cancel, 0) != WAIT_TIMEOUT) {
+        // loop will be terminated on next file
+        break;
+      }
+    }
+    chksum ^= data[pos];
+  }
+  FlMemUnmap(&mmap);
+  return FL_OK;
+}
+
+int fl_cache_fonts(FL_LoaderCtx *c, HANDLE evt_cancel) {
+  fl_walk_loaded_fonts(c, fl_cache_cb, &evt_cancel);
   return FL_OK;
 }
