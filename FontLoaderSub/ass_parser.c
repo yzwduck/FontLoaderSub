@@ -86,6 +86,7 @@ parse_tags(ASS_Track *track, const wchar_t *p, const wchar_t *end, int nested) {
     const wchar_t *name_end = q;
 
     // Split parenthesized arguments
+    ASS_Range first_arg = {NULL, NULL};
     if (q != end && *q == '(') {
       ++q;
       while (1) {
@@ -102,6 +103,9 @@ parse_tags(ASS_Track *track, const wchar_t *p, const wchar_t *end, int nested) {
           while (r != end && *r != ')')
             ++r;
           // push_arg(args, &argc, q, r);
+          if (first_arg.begin == NULL) {
+            first_arg = (ASS_Range){q, r};
+          }
           q = r;
           if (q != end)
             ++q;
@@ -115,7 +119,10 @@ parse_tags(ASS_Track *track, const wchar_t *p, const wchar_t *end, int nested) {
       if (ass_strncmp(L"0", arg.begin, arg.end - arg.begin) == 0) {
         // restore?
       } else {
-        fire_font_cb(track, &arg);
+        if (first_arg.begin)
+          fire_font_cb(track, &first_arg);
+        else 
+          fire_font_cb(track, &arg);
       }
     }
   }
