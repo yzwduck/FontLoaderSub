@@ -320,18 +320,30 @@ int fs_iter_next(FS_Iter *it) {
   for (; it->index_id != s->stat.num_face; it->index_id++) {
     const wchar_t *got_face = s->index[it->index_id].face;
     const wchar_t *got_ver = s->index[it->index_id].ver;
+
+    // check if prefix matches
     const size_t df = str_cmp_x(face, got_face);
-    const size_t dv = str_cmp_x(ver, got_ver);
     if (face[df] != 0) {
-      // match end
       break;
     }
-    if (ver[dv] == 0 && got_ver[dv] == 0) {
-      // match found
-      it->info = s->index[it->index_id];
-      return 1;
+
+    // check version
+    if (ver == NULL) {
+      if (got_ver != NULL)
+        break;
+    } else {
+      if (got_ver == NULL)
+        break;
+      const size_t dv = str_cmp_x(ver, got_ver);
+      if (ver[dv] != 0 || got_ver[dv] != 0)
+        break;
     }
+
+    // match found
+    it->info = s->index[it->index_id];
+    return 1;
   }
+  // iter end
   // *it = (FS_Iter){0};
   it->set = NULL;
   return 0;
