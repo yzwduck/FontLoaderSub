@@ -6,6 +6,9 @@ install:
 - ps: |
     $env:COMM_TAG = $(git describe --always)
     $env:BUILD = "{0}-{1}" -f $env:APPVEYOR_PROJECT_NAME, $env:COMM_TAG
+    $env:PROJECT = "FontLoaderSub"
+    curl.exe -fsSL -o upx-3.95-win32.zip "https://github.com/upx/upx/releases/download/v3.95/upx-3.95-win32.zip"
+    7z x upx-3.95-win32.zip
 
 build_script:
 - msbuild /p:Platform=x86 /p:Configuration=Minimize
@@ -15,9 +18,14 @@ build_script:
 
 after_build:
 - ps: |
+    New-Item -ItemType directory -Path UPX
+    .\upx-3.95-win64\upx.exe -o "UPX\$env:PROJECT.exe" "Minimize\Win32\$env:PROJECT.exe"
+    .\upx-3.95-win64\upx.exe -o "UPX\$env:PROJECT-64.exe" "Minimize\x64\$env:PROJECT.exe"
+
     $CONFIGS = @(
         "Minimize";
         "Release";
+        "UPX";
     )
     foreach ($conf in $CONFIGS) {
         7z a "$env:BUILD-$conf.zip" "$conf\" "-xr!*.iobj" "-xr!*.ipdb"
