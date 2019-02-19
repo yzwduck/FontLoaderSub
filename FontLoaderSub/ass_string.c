@@ -30,12 +30,12 @@ int ass_is_eol(int ch) {
 
 int ass_strncmp(const wchar_t *s1, const wchar_t *s2, size_t cch) {
   wchar_t a, b;
-  const wchar_t *last = s1 + cch;
+  const wchar_t *last = s2 + cch;
 
   do {
     a = *s1++;
     b = *s2++;
-  } while (s1 != last && a && a == b);
+  } while (s2 != last && a && a == b);
 
   return a - b;
 }
@@ -49,12 +49,12 @@ static wchar_t ass_to_lower(wchar_t ch) {
 int ass_strncasecmp(const wchar_t *s1, const wchar_t *s2, size_t cch) {
   // assume wchar_t is unsigned short
   wchar_t a, b;
-  const wchar_t *last = s1 + cch;
+  const wchar_t *last = s2 + cch;
 
   do {
     a = ass_to_lower(*s1++);
     b = *s2++;
-  } while (s1 != last && a && a == b);
+  } while (s2 != last && a && a == b);
 
   return a - b;
 }

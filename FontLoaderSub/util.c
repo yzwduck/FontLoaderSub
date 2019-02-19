@@ -109,6 +109,7 @@ static wchar_t *FlTextDecodeUtf16(
     size_t bytes,
     size_t *cch,
     allocator_t *alloc) {
+  const wchar_t *wstr = (const wchar_t*)mstr;
   wchar_t *buf = NULL;
   int ok = 0;
 
@@ -119,7 +120,7 @@ static wchar_t *FlTextDecodeUtf16(
       break;
 
     for (size_t i = 0; i != r; i++) {
-      buf[i] = big_endian ? be16(mstr[i]) : mstr[i];
+      buf[i] = big_endian ? be16(wstr[i]) : wstr[i];
     }
     buf[r] = 0;
     ok = 1;
