@@ -32,5 +32,7 @@ after_build:
         7z a "$env:BUILD-$conf.zip" "$conf\" "-xr!*.iobj" "-xr!*.ipdb"
     }
 
+    Get-ChildItem . -Recurse | where {$_.Extension -eq ".exe"} | Get-FileHash -Algorithm SHA256
+
 artifacts:
 - path: '*.zip'
