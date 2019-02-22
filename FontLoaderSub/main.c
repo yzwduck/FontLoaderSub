@@ -111,9 +111,9 @@ static int AppUpdateStatus(FL_AppCtx *c) {
   }
   wsprintfW(
       c->status_txt,
-      L"%d loaded. %d failed. %d unmatch.\n%d files. %d fonts. %d subs.",
+      L"%d loaded. %d failed. %d unmatched.\n%d files. %d fonts. %d subs.",
       c->loader.num_font_loaded, c->loader.num_font_failed,
-      c->loader.num_font_unmatch, stat.num_file, stat.num_face,
+      c->loader.num_font_unmatched, stat.num_file, stat.num_face,
       c->loader.num_sub);
 
   const wchar_t *cap;

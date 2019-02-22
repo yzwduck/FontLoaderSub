@@ -479,7 +479,7 @@ int fl_load_fonts(FL_LoaderCtx *c) {
   // caller: fl_unload_fonts
 
   int r = FL_OK;
-  c->num_font_failed = c->num_font_loaded = c->num_font_unmatch = 0;
+  c->num_font_failed = c->num_font_loaded = c->num_font_unmatched = 0;
 
   // pass 1: scan for existing fonts
   size_t pos_it = 0;
@@ -522,7 +522,7 @@ int fl_load_fonts(FL_LoaderCtx *c) {
       m.face = face;
       m.filename = NULL;
       vec_append(&c->loaded_font, &m, 1);
-      c->num_font_unmatch++;
+      c->num_font_unmatched++;
     } else {
       int num_loaded = 0;
       int num_dup = 0;
@@ -614,7 +614,7 @@ int fl_unload_fonts(FL_LoaderCtx *c) {
   vec_clear(&c->loaded_font);
   c->num_font_loaded = 0;
   c->num_font_failed = 0;
-  c->num_font_unmatch = 0;
+  c->num_font_unmatched = 0;
 
   return FL_OK;
 }
