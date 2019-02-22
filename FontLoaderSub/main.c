@@ -88,7 +88,7 @@ static int AppBuildLog(FL_AppCtx *c) {
     if (!str_db_push_u16_le(log, tag, 0) ||
         !str_db_push_u16_le(log, m->face, 0))
       return 0;
-    if (m->filename) {
+    if (m->filename && !(m->flag & FL_LOAD_DUP)) {
       if (!str_db_push_u16_le(log, L" > ", 0) ||
           !str_db_push_u16_le(log, m->filename, 0))
         return 0;

@@ -6,6 +6,7 @@
 #include "ass_parser.h"
 #include "path.h"
 #include "mock_config.h"
+#include "tim_sort.h"
 
 #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
 
@@ -297,9 +298,9 @@ static int fl_file_loaded(FL_LoaderCtx *c, const wchar_t *file) {
   for (size_t i = 0; i != c->loaded_font.n; i++) {
     FL_FontMatch *m = &data[i];
     if (m->filename == file)
-      return 1;
+      return i;
   }
-  return 0;
+  return -1;
 }
 
 static int fl_hash_loaded(FL_LoaderCtx *c, const uint8_t hash[32]) {
@@ -313,10 +314,10 @@ static int fl_hash_loaded(FL_LoaderCtx *c, const uint8_t hash[32]) {
         dif |= m->hash[j] ^ hash[j];
       }
       if (!dif)
-        return !dif;
+        return i;
     }
   }
-  return 0;
+  return -1;
 }
 
 static int
@@ -361,9 +362,13 @@ fl_calc_hash(FL_LoaderCtx *c, const void *data, size_t size, uint8_t res[32]) {
   return ok ? FL_OK : FL_OS_ERROR;
 }
 
-static int
-fl_load_file(FL_LoaderCtx *c, const wchar_t *face, const wchar_t *file) {
+static int fl_load_file(
+    FL_LoaderCtx *c,
+    const wchar_t *face,
+    const wchar_t *file,
+    int *dup) {
   int r = FL_OK;
+  int candidate;
   memmap_t map = {0};
   uint8_t hash[32];
 
@@ -374,7 +379,9 @@ fl_load_file(FL_LoaderCtx *c, const wchar_t *face, const wchar_t *file) {
     }
 
     // check 1: if file pointer is loaded
-    if (fl_file_loaded(c, file)) {
+    candidate = fl_file_loaded(c, file);
+    if (candidate != -1) {
+      *dup = candidate;
       r = FL_DUP;
       break;
     }
@@ -399,7 +406,9 @@ fl_load_file(FL_LoaderCtx *c, const wchar_t *face, const wchar_t *file) {
     if (r != FL_OK)
       break;
 
-    if (fl_hash_loaded(c, hash)) {
+    candidate = fl_hash_loaded(c, hash);
+    if (candidate != -1) {
+      *dup = candidate;
       r = FL_DUP;
       break;
     }
@@ -436,6 +445,34 @@ fl_load_file(FL_LoaderCtx *c, const wchar_t *face, const wchar_t *file) {
     vec_append(&c->loaded_font, &m, 1);
   }
   return r;
+}
+
+int fl_load_rec_sort(const void *ptr_a, const void *ptr_b, void *arg) {
+  const FL_FontMatch *a = ptr_a, *b = ptr_b;
+
+  // sort flag in descent order
+  const int flag_mask = 16 | 8;  // FL_LOAD_ERR | FL_LOAD_MISS
+  const int df = (b->flag & flag_mask) - (a->flag & flag_mask);
+  if (df != 0)
+    return df;
+
+  // sort in filename
+  if (!a->filename)
+    return -1;
+  if (!b->filename)
+    return 1;
+  const int ds = FlStrCmpIW(a->filename, b->filename);
+  if (ds != 0)
+    return ds;
+
+  // dup comes late
+  if (b->flag & FL_LOAD_DUP)
+    return -1;
+  if (a->flag & FL_LOAD_DUP)
+    return 1;
+
+  // last resort
+  return FlStrCmpIW(a->face, b->face);
 }
 
 int fl_load_fonts(FL_LoaderCtx *c) {
@@ -490,11 +527,12 @@ int fl_load_fonts(FL_LoaderCtx *c) {
       int num_loaded = 0;
       int num_dup = 0;
       int num_total = 0;
+      int dup_candidate = 0;
       do {
         if ((r = fl_check_cancel(c)) != FL_OK)
           return r;
 
-        r = fl_load_file(c, face, it.info.tag);
+        r = fl_load_file(c, face, it.info.tag, &dup_candidate);
         num_total++;
         if (r == FL_DUP)
           num_dup++;
@@ -504,13 +542,18 @@ int fl_load_fonts(FL_LoaderCtx *c) {
       if (num_dup == num_total) {
         // FL_FontMatch m = {.flag = FL_LOAD_DUP, .face = face};
         FL_FontMatch m;
+        FL_FontMatch *data = c->loaded_font.data;
+        FL_FontMatch *ref = &data[dup_candidate];
         m.flag = FL_LOAD_DUP;
         m.face = face;
-        m.filename = NULL;
+        m.filename = ref->filename;
         vec_append(&c->loaded_font, &m, 1);
       }
     }
   }
+  tim_sort(
+      c->loaded_font.data, c->loaded_font.n, c->loaded_font.size, c->alloc,
+      fl_load_rec_sort, NULL);
 
   return FL_OK;
 }
@@ -535,15 +578,16 @@ fl_walk_loaded_fonts(FL_LoaderCtx *c, WalkLoadedCallback cb, void *param) {
   const size_t pos = str_db_tell(&c->walk_path);
   FL_FontMatch *data = c->loaded_font.data;
   for (size_t i = 0; i != c->loaded_font.n; i++) {
+    const wchar_t *path = NULL;
     FL_FontMatch *m = &data[i];
     str_db_seek(&c->walk_path, pos);
     if (m->filename && str_db_push_u16_le(&c->walk_path, m->filename, 0)) {
-      const wchar_t *path = str_db_get(&c->walk_path, 0);
-      // trigger callback
-      const int ret = cb(c, i, path, param);
-      if (ret != FL_OK)
-        return ret;
+      path = str_db_get(&c->walk_path, 0);
     }
+    // trigger callback
+    const int ret = cb(c, i, path, param);
+    if (ret != FL_OK)
+      return ret;
   }
 
   return FL_OK;
@@ -553,12 +597,14 @@ static int
 fl_unload_cb(FL_LoaderCtx *c, size_t i, const wchar_t *path, void *param) {
   FL_FontMatch *data = c->loaded_font.data;
   FL_FontMatch *m = &data[i];
-  RemoveFontResource(path);
-  if (MOCK_DELAY_FONT) {
-    Sleep(MOCK_DELAY_FONT);
-  }
-  if (m->flag & FL_LOAD_OK) {
-    c->num_font_loaded--;
+  if (!(m->flag & FL_LOAD_DUP)) {
+    if (m->flag & FL_LOAD_OK) {
+      c->num_font_loaded--;
+    }
+    RemoveFontResource(path);
+    if (MOCK_DELAY_FONT) {
+      Sleep(MOCK_DELAY_FONT);
+    }
   }
   return 0;
 }
@@ -575,6 +621,12 @@ int fl_unload_fonts(FL_LoaderCtx *c) {
 
 static int
 fl_cache_cb(FL_LoaderCtx *c, size_t i, const wchar_t *path, void *param) {
+  FL_FontMatch *data = c->loaded_font.data;
+  FL_FontMatch *m = &data[i];
+  if (m->flag & FL_LOAD_DUP) {
+    return FL_OK;
+  }
+
   HANDLE evt_cancel = *(HANDLE *)param;
   if (WaitForSingleObject(evt_cancel, 0) != WAIT_TIMEOUT) {
     return FL_OS_ERROR;
@@ -586,7 +638,7 @@ fl_cache_cb(FL_LoaderCtx *c, size_t i, const wchar_t *path, void *param) {
   FlMemMap(path, &mmap);
   const size_t step = 4 * 1024;
   volatile char chksum = 0;
-  volatile const char *data = mmap.data;
+  volatile const char *bytes = mmap.data;
   for (size_t pos = 0; pos < mmap.size; pos += step) {
     const DWORD now = GetTickCount();
     if (now - tick > 10) {
@@ -596,7 +648,7 @@ fl_cache_cb(FL_LoaderCtx *c, size_t i, const wchar_t *path, void *param) {
         break;
       }
     }
-    chksum ^= data[pos];
+    chksum ^= bytes[pos];
   }
   FlMemUnmap(&mmap);
   return FL_OK;

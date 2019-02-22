@@ -7,9 +7,9 @@
 typedef enum {
   FL_OS_LOADED = 1,
   FL_LOAD_OK = 2,
-  FL_LOAD_ERR = 4,
-  FL_LOAD_DUP = 8,
-  FL_LOAD_MISS = 16
+  FL_LOAD_ERR = 16,
+  FL_LOAD_DUP = 4,
+  FL_LOAD_MISS = 8
 } FL_MatchFlag;
 
 typedef struct {
