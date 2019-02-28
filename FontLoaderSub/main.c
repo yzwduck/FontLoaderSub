@@ -268,7 +268,9 @@ static HRESULT CALLBACK DlgWorkProc(
       } else {
         PostMessage(hWnd, WM_CLOSE, 0, 0);
       }
+      SendMessage(HWND_BROADCAST, WM_FONTCHANGE, 0, 0);
     } else {
+      // work in progress
       if (c->taskbar_list3) {
         c->taskbar_list3->lpVtbl->SetProgressState(
             c->taskbar_list3, hWnd, TBPF_INDETERMINATE);
