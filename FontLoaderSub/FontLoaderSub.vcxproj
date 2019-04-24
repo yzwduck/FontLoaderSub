@@ -248,6 +248,7 @@
     <ClCompile Include="font_loader.c" />
     <ClCompile Include="font_set.c" />
     <ClCompile Include="main.c" />
+    <ClCompile Include="shortcut.c" />
     <ClCompile Include="test.c" />
     <ClCompile Include="tim_sort.c" />
     <ClCompile Include="ttf_parser.c" />
@@ -261,6 +262,7 @@
     <ClInclude Include="font_loader.h" />
     <ClInclude Include="font_set.h" />
     <ClInclude Include="mock_config.h" />
+    <ClInclude Include="shortcut.h" />
     <ClInclude Include="tim_sort.h" />
     <ClInclude Include="ttf_parser.h" />
     <ClInclude Include="util.h" />

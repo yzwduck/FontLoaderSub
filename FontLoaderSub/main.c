@@ -6,9 +6,10 @@
 #include "util.h"
 #include "font_loader.h"
 #include "path.h"
+#include "shortcut.h"
 #include "mock_config.h"
 
-#define kAppTitle L"FontLoaderSub r4"
+#define kAppTitle L"FontLoaderSub r5"
 #define kCacheFile L"fc-subs.db"
 
 static void *mem_realloc(void *existing, size_t size, void *arg) {
@@ -46,7 +47,8 @@ typedef struct {
   wchar_t status_txt[128];  // should be sufficient
   str_db_t log;
   const wchar_t *font_path;
-  wchar_t exe_path[MAX_PATH];
+  // wchar_t exe_path[MAX_PATH];
+  str_db_t full_exe_path;
 
   HWND work_hwnd;
   HANDLE thread_load;
@@ -55,10 +57,19 @@ typedef struct {
 
   TASKDIALOGCONFIG dlg_work;
   TASKDIALOGCONFIG dlg_done;
+  TASKDIALOGCONFIG dlg_help;
+  int show_shortcut;
+  FL_ShortCtx shortcut;
   ITaskbarList3 *taskbar_list3;
 } FL_AppCtx;
 
 static void AppHelpUsage(FL_AppCtx *c, HWND hWnd) {
+  c->show_shortcut = 0;
+  TaskDialogIndirect(&c->dlg_help, NULL, NULL, NULL);
+  if (c->show_shortcut) {
+    ShortcutShow(&c->shortcut, hWnd);
+  }
+  return;
   TaskDialog(
       hWnd, c->hInst, kAppTitle, L"Usage",
       L"1. Move EXE to font folder,\n"
@@ -280,6 +291,20 @@ static HRESULT CALLBACK DlgWorkProc(
   return S_OK;
 }
 
+static HRESULT CALLBACK DlgHelpProc(
+    HWND hWnd,
+    UINT uNotification,
+    WPARAM wParam,
+    LPARAM lParam,
+    LONG_PTR dwRefData) {
+  FL_AppCtx *c = (FL_AppCtx *)dwRefData;
+  if (uNotification == TDN_HYPERLINK_CLICKED) {
+    PostMessage(hWnd, WM_CLOSE, 0, 0);
+    c->show_shortcut = 1;
+  }
+  return S_OK;
+}
+
 static HRESULT CALLBACK DlgDoneProc(
     HWND hWnd,
     UINT uNotification,
@@ -338,7 +363,7 @@ static int AppInit(FL_AppCtx *c, HINSTANCE hInst, allocator_t *alloc) {
   c->dlg_work.lpCallbackData = (LONG_PTR)c;
   c->dlg_work.pfCallback = DlgWorkProc;
 
-  c->dlg_done.cbSize = sizeof c->dlg_work;
+  c->dlg_done.cbSize = sizeof c->dlg_done;
   c->dlg_done.hInstance = hInst;
   c->dlg_done.pszWindowTitle = kAppTitle;
   c->dlg_done.dwCommonButtons =
@@ -353,15 +378,53 @@ static int AppInit(FL_AppCtx *c, HINSTANCE hInst, allocator_t *alloc) {
   c->dlg_done.lpCallbackData = (LONG_PTR)c;
   c->dlg_done.pfCallback = DlgDoneProc;
 
+  c->dlg_help.cbSize = sizeof c->dlg_help;
+  c->dlg_help.hInstance = hInst;
+  c->dlg_help.pszWindowTitle = kAppTitle;
+  c->dlg_help.pszMainInstruction = L"Usage";
+  c->dlg_help.pszContent =
+      L"1. Move EXE to font folder,\n"
+      L"2. Drop ass/ssa/folder onto EXE, or <A HREF=\"\">use shortcuts</A>,\n"
+      L"3. Hit \"Retry\"?";
+  c->dlg_help.dwCommonButtons = TDCBF_CLOSE_BUTTON;
+  c->dlg_help.dwFlags = TDF_ENABLE_HYPERLINKS | TDF_ALLOW_DIALOG_CANCELLATION;
+  c->dlg_help.lpCallbackData = (LONG_PTR)c;
+  c->dlg_help.pfCallback = DlgHelpProc;
+
   c->argv = CommandLineToArgvW(GetCommandLine(), &c->argc);
   if (c->argv == NULL)
     return 0;
-  if (GetModuleFileName(NULL, c->exe_path, MAX_PATH) == 0)
+  if (str_db_init(&c->full_exe_path, c->alloc, 0, 0))
     return 0;
+
+  DWORD initial = MAX_PATH;
+  while (1) {
+    if (vec_prealloc(&c->full_exe_path.vec, initial) < initial)
+      return 0;
+    DWORD ret = GetModuleFileName(
+        NULL, (WCHAR *)str_db_get(&c->full_exe_path, 0), initial);
+    if (ret == 0)
+      return 0;
+    if (ret < initial) {
+      // sufficient buffer size
+      break;
+    } else {
+      initial = initial * 2;
+    }
+  }
+  if (str_db_push_u16_le(
+          &c->full_exe_path, str_db_get(&c->full_exe_path, 0), 0) == NULL)
+    return 0;
+  ShortcutInit(&c->shortcut, hInst, c->alloc);
+  c->shortcut.key = L"FontLoaderSub";  // registry key
+  c->shortcut.dlg_title = kAppTitle;
+  c->shortcut.explorer_menu_title = L"FontLoaderSub here";
+  c->shortcut.sendto_title = L"FontLoaderSub";
+  c->shortcut.path = str_db_get(&c->full_exe_path, 0);
   if (fl_init(&c->loader, c->alloc) != FL_OK)
     return 0;
   str_db_init(&c->log, c->alloc, 0, 0);
-  c->font_path = c->exe_path;
+  c->font_path = str_db_get(&c->full_exe_path, 0);
 
   if (MOCK_FONT_PATH)
     c->font_path = MOCK_FONT_PATH;
@@ -385,6 +448,12 @@ static int AppInit(FL_AppCtx *c, HINSTANCE hInst, allocator_t *alloc) {
 }
 
 static int AppRun(FL_AppCtx *c) {
+  BYTE state[256];
+  if (GetKeyboardState(state) && state[VK_SHIFT]) {
+    ShortcutShow(&c->shortcut, NULL);
+    return 0;
+  }
+
   TaskDialogIndirect(&c->dlg_work, NULL, NULL, NULL);
 
   // clean up

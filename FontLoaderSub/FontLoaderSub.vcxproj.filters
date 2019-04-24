@@ -58,6 +58,9 @@
     <ClCompile Include="test.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="shortcut.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="util.h">
@@ -88,6 +91,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="mock_config.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shortcut.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
