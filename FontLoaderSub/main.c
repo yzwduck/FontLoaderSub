@@ -448,8 +448,7 @@ static int AppInit(FL_AppCtx *c, HINSTANCE hInst, allocator_t *alloc) {
 }
 
 static int AppRun(FL_AppCtx *c) {
-  BYTE state[256];
-  if (GetKeyboardState(state) && state[VK_SHIFT]) {
+  if (GetAsyncKeyState(VK_SHIFT)) {
     ShortcutShow(&c->shortcut, NULL);
     return 0;
   }
