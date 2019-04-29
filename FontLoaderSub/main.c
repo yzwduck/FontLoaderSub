@@ -10,7 +10,6 @@
 #include "mock_config.h"
 #include "res/resource.h"
 
-#define kAppTitle L"FontLoaderSub r5"
 #define kCacheFile L"fc-subs.db"
 
 static void *mem_realloc(void *existing, size_t size, void *arg) {
@@ -31,7 +30,8 @@ typedef enum {
   APP_SCAN_FONT = IDS_WORK_FONT,
   APP_LOAD_FONT = IDS_WORK_LOAD,
   APP_UNLOAD_FONT = IDS_WORK_UNLOAD,
-  APP_DONE = IDS_WORK_DONE
+  APP_DONE = IDS_WORK_DONE,
+  APP_CANCELLED
 } FL_AppState;
 
 typedef struct {
@@ -131,7 +131,7 @@ static int AppUpdateStatus(FL_AppCtx *c) {
       _countof(c->status_txt), (va_list *)args);
 
   LPARAM cap_id;
-  if (c->cancelled) {
+  if (c->cancelled || c->app_state == APP_CANCELLED) {
     cap_id = IDS_WORK_CANCELLING;
   } else {
     cap_id = c->app_state;
@@ -197,8 +197,10 @@ static DWORD WINAPI AppWorker(LPVOID param) {
     }
     }
   }
-  if (c->cancelled)
+  if (c->cancelled) {
     fl_unload_fonts(&c->loader);
+    c->app_state = APP_CANCELLED;
+  }
 
   return 0;
 }
@@ -221,48 +223,69 @@ static HRESULT CALLBACK DlgWorkProc(
     LPARAM lParam,
     LONG_PTR dwRefData) {
   FL_AppCtx *c = (FL_AppCtx *)dwRefData;
+  int navigated = 0;
   if (uNotification == TDN_CREATED || uNotification == TDN_NAVIGATED) {
     c->work_hwnd = hWnd;
     SendMessage(hWnd, TDM_SET_PROGRESS_BAR_MARQUEE, TRUE, 0);
-    AppUpdateStatus(c);
 
     DWORD thread_id;
     c->thread_load = CreateThread(NULL, 0, AppWorker, c, 0, &thread_id);
     if (c->thread_load == NULL) {
+      // fatal error, try exit early
       c->cancelled = 1;
+      c->app_state = APP_CANCELLED;
+      PostMessage(hWnd, WM_CLOSE, 0, 0);
     }
   } else if (uNotification == TDN_BUTTON_CLICKED) {
     if (wParam == IDCANCEL) {
-      c->cancelled = 1;
-      fl_cancel(&c->loader);
-      // close dialog only if worker is done
-      if (WaitForSingleObject(c->thread_load, 0) == WAIT_TIMEOUT)
-        return S_FALSE;
-      AppUpdateStatus(c);
+      if (c->app_state == APP_CANCELLED) {
+        SendMessage(HWND_BROADCAST, WM_FONTCHANGE, 0, 0);
+        return S_OK;  // exit cleared
+      }
+      if (!c->req_exit) {
+        c->cancelled = 1;
+        fl_cancel(&c->loader);  // signal cancel event
+      }
     }
   } else if (uNotification == TDN_TIMER) {
     DWORD r = WaitForSingleObject(c->thread_load, 0);
-    AppUpdateStatus(c);
     if (r != WAIT_TIMEOUT) {
+      // worker exited
       CloseHandle(c->thread_load);
       c->thread_load = NULL;
-      // done, or error
       if (c->taskbar_list3) {
         c->taskbar_list3->lpVtbl->SetProgressState(
             c->taskbar_list3, hWnd, TBPF_NOPROGRESS);
       }
       if (c->app_state == APP_DONE) {
-        if (AppBuildLog(c)) {
-          c->dlg_done.pszExpandedInformation = str_db_get(&c->log, 0);
+        // worker exited without error...
+        if (!c->cancelled) {
+          // and has not been cancelled
+          if (AppBuildLog(c)) {
+            c->dlg_done.pszExpandedInformation = str_db_get(&c->log, 0);
+          } else {
+            c->dlg_done.pszExpandedInformation = NULL;
+          }
+          AppUpdateStatus(c);
+          c->dlg_done.pszContent = c->status_txt;
+          SendMessage(HWND_BROADCAST, WM_FONTCHANGE, 0, 0);
+          SendMessage(hWnd, TDM_NAVIGATE_PAGE, 0, (LPARAM)&c->dlg_done);
+          navigated = 1;
         } else {
-          c->dlg_done.pszExpandedInformation = NULL;
+          // worker done, then cancelled before timer,
+          // work again to continue cancellation routine
+          c->app_state = APP_UNLOAD_FONT;
+          SendMessage(hWnd, TDM_NAVIGATE_PAGE, 0, (LPARAM)&c->dlg_work);
         }
-        c->dlg_done.pszContent = c->status_txt;
-        SendMessage(hWnd, TDM_NAVIGATE_PAGE, 0, (LPARAM)&c->dlg_done);
       } else {
+        if (c->app_state != APP_CANCELLED) {
+          // it's an error
+          TaskDialog(
+              hWnd, c->hInst, MAKEINTRESOURCE(IDS_APP_NAME_VER), L"Error...",
+              NULL, TDCBF_CLOSE_BUTTON, TD_ERROR_ICON, NULL);
+        }
         PostMessage(hWnd, WM_CLOSE, 0, 0);
       }
-      SendMessage(HWND_BROADCAST, WM_FONTCHANGE, 0, 0);
     } else {
       // work in progress
       if (c->taskbar_list3) {
@@ -271,7 +294,9 @@ static HRESULT CALLBACK DlgWorkProc(
       }
     }
   }
-  return S_OK;
+  if (!navigated)
+    AppUpdateStatus(c);
+  return S_FALSE;
 }
 
 static HRESULT CALLBACK DlgHelpProc(
@@ -428,7 +453,7 @@ static int AppInit(FL_AppCtx *c, HINSTANCE hInst, allocator_t *alloc) {
 }
 
 static int AppRun(FL_AppCtx *c) {
-  if (0 || GetAsyncKeyState(VK_SHIFT)) {
+  if (GetAsyncKeyState(VK_SHIFT)) {
     ShortcutShow(&c->shortcut, NULL);
     return 0;
   }
@@ -464,8 +489,8 @@ int WINAPI _tWinMain(
   // FL_AppCtx *ctx = alloc.alloc(NULL, sizeof *ctx, alloc.arg);
   if (ctx == NULL || !AppInit(ctx, hInstance, &alloc)) {
     TaskDialog(
-        NULL, hInstance, kAppTitle, L"Error...", NULL, TDCBF_CLOSE_BUTTON,
-        TD_ERROR_ICON, NULL);
+        NULL, hInstance, MAKEINTRESOURCE(IDS_APP_NAME_VER), L"Error...", NULL,
+        TDCBF_CLOSE_BUTTON, TD_ERROR_ICON, NULL);
     return 1;
   }
   AppRun(ctx);
