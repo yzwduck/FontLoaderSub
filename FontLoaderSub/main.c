@@ -65,6 +65,7 @@ typedef struct {
 
 static void AppHelpUsage(FL_AppCtx *c, HWND hWnd) {
   c->show_shortcut = 0;
+  c->dlg_help.hwndParent = hWnd;
   TaskDialogIndirect(&c->dlg_help, NULL, NULL, NULL);
   if (c->show_shortcut) {
     ShortcutShow(&c->shortcut, hWnd);
@@ -381,6 +382,7 @@ static int AppInit(FL_AppCtx *c, HINSTANCE hInst, allocator_t *alloc) {
   c->dlg_help.cbSize = sizeof c->dlg_help;
   c->dlg_help.hInstance = hInst;
   c->dlg_help.pszWindowTitle = kAppTitle;
+  c->dlg_help.pszMainIcon = TD_INFORMATION_ICON;
   c->dlg_help.pszMainInstruction = L"Usage";
   c->dlg_help.pszContent =
       L"1. Move EXE to font folder,\n"
