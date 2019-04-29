@@ -10,8 +10,8 @@ enum { FL_SHORTCUT_SENDTO = 0, FL_SHORTCUT_CONTEXT, FL_SHORTCUT_MAX };
 typedef struct {
   const WCHAR *key;
   const WCHAR *dlg_title;
-  const WCHAR *sendto_title;
-  const WCHAR *explorer_menu_title;
+  UINT sendto_str_id;
+  UINT dir_bg_menu_str_id;
   const WCHAR *path;
   str_db_t tmp;
   TASKDIALOGCONFIG dlg;

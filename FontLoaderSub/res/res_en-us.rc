@@ -1,0 +1,36 @@
+#pragma code_page(65001)
+
+#include <Windows.h>
+#include <CommCtrl.h>
+#include <Richedit.h>
+#include <wingdi.h>
+
+#include "resource.h"
+
+#if 1
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+STRINGTABLE
+{
+  IDS_APP_NAME_VER "FontLoaderSub r5"
+  IDS_SHELL_VERB "FontLoaderSub here"
+  IDS_SENDTO "FontLoaderSub"
+  IDS_LOAD_STAT "%1!i! loaded. %2!i! failed. %3!i! unmatched.\n%4!i! files. %5!i! fonts. %6!i! subs."
+  IDS_WORK_CANCELLING "Cancelling"
+  IDS_WORK_SUBTITLE "Subtitle"
+  IDS_WORK_CACHE "Cache"
+  IDS_WORK_FONT "Font"
+  IDS_WORK_LOAD "Load"
+  IDS_WORK_UNLOAD "Unload"
+  IDS_WORK_DONE "Done"
+  IDS_LICENSE "GPLv2: <A HREF=""https://github.com/yzwduck/FontLoaderSub"">github.com/yzwduck/FontLoaderSub</A>"
+  IDS_HELP "Usage"
+  IDS_USAGE "1. Move EXE to font folder,\n2. Drop ass/ssa/folder onto EXE, or <A HREF="""">use shortcuts</A>,\n3. Hit ""Retry""?"
+  IDS_MANAGE_SHORTCUT "Manage shortcuts"
+  IDS_SHORTCUT_ERROR_ADD "Failed to create shortcut"
+  IDS_SHORTCUT_ERROR_DEL "Failed to remove shortcut"
+  IDS_SHORTCUT_ADD_DIR_BG "Add to directory background"
+  IDS_SHORTCUT_DEL_DIR_BG "Remove from directory background"
+  IDS_SHORTCUT_ADD_SENDTO "Add to SendTo"
+  IDS_SHORTCUT_DEL_SENDTO "Remove from SendTo"
+}
+#endif

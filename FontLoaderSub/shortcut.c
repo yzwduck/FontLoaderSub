@@ -5,6 +5,7 @@
 #include <ObjIdl.h>
 
 #include "ass_string.h"
+#include "res/resource.h"
 
 typedef enum {
   SHORTCUT_MODE_QUERY,
@@ -14,14 +15,14 @@ typedef enum {
 
 #define BUTTON_ID_START 1024
 
-typedef void (*ShortcutTogglers)(FL_ShortCtx *c, ShortcutMode mode);
+typedef int (*ShortcutTogglers)(FL_ShortCtx *c, ShortcutMode mode);
 
 static int ShortcutExplorerDirectory(
     FL_ShortCtx *ctx,
     const WCHAR *key_path,
     ShortcutMode mode);
 
-static void ShortcutRefresh(FL_ShortCtx *ctx);
+static void ShortcutRefresh(FL_ShortCtx *ctx, int error);
 
 static HRESULT CALLBACK DlgShortcutProc(
     HWND hWnd,
@@ -33,7 +34,7 @@ static HRESULT CALLBACK DlgShortcutProc(
 void ShortcutInit(FL_ShortCtx *c, HINSTANCE hInst, allocator_t *alloc) {
   c->dlg.cbSize = sizeof c->dlg;
   c->dlg.hInstance = hInst;
-  c->dlg.pszContent = L"Manage shortcuts";
+  c->dlg.pszContent = MAKEINTRESOURCE(IDS_MANAGE_SHORTCUT);
   c->dlg.pButtons = c->button;
   c->dlg.cButtons = FL_SHORTCUT_MAX;
   c->dlg.dwCommonButtons = TDCBF_CLOSE_BUTTON;
@@ -50,7 +51,7 @@ void ShortcutShow(FL_ShortCtx *c, HWND hWnd) {
   c->dlg.hwndParent = hWnd;
   c->dlg.pszWindowTitle = c->dlg_title;
   c->dlg.nDefaultButton = IDCLOSE;
-  ShortcutRefresh(c);
+  ShortcutRefresh(c, 0);
   TaskDialogIndirect(&c->dlg, NULL, NULL, NULL);
 }
 
@@ -86,10 +87,21 @@ int ShortcutExplorerDirectory(
       if (ret != ERROR_SUCCESS)
         break;
 
-      size_t len = ass_strlen(c->explorer_menu_title);
+      WCHAR res_suffix[16];
+      FormatMessage(
+          FORMAT_MESSAGE_FROM_STRING | FORMAT_MESSAGE_ARGUMENT_ARRAY,
+          L"\",-%1!i!", 0, 0, res_suffix, _countof(res_suffix),
+          (va_list *)&c->dir_bg_menu_str_id);
+
+      str_db_seek(&c->tmp, 0);
+      if (!str_db_push_u16_le(&c->tmp, L"@\"", 0) ||
+          !str_db_push_u16_le(&c->tmp, c->path, 0) ||
+          !str_db_push_u16_le(&c->tmp, res_suffix, 0))
+        break;
+      const WCHAR *verb = str_db_get(&c->tmp, 0);
       ret = RegSetValueEx(
-          root, NULL, 0, REG_SZ, (const BYTE *)c->explorer_menu_title,
-          len * sizeof c->explorer_menu_title[0]);
+          root, TEXT("MUIVerb"), 0, REG_SZ, (const BYTE *)verb,
+          str_db_tell(&c->tmp) * sizeof verb[0]);
       if (ret != ERROR_SUCCESS)
         break;
 
@@ -140,7 +152,8 @@ int ShortcutSendTo(FL_ShortCtx *c, ShortcutMode mode) {
       break;
     if (!str_db_push_u16_le(&c->tmp, sendto_path, 0) ||
         !str_db_push_u16_le(&c->tmp, L"\\", 0) ||
-        !str_db_push_u16_le(&c->tmp, c->sendto_title, 0) ||
+        !str_db_push_u16_le(
+            &c->tmp, ResLoadString(c->dlg.hInstance, c->sendto_str_id), 0) ||
         !str_db_push_u16_le(&c->tmp, L".lnk", 0))
       break;
     const WCHAR *path = str_db_get(&c->tmp, 0);
@@ -189,15 +202,24 @@ int ShortcutSendTo(FL_ShortCtx *c, ShortcutMode mode) {
   return succ;
 }
 
-static void ShortcutRefresh(FL_ShortCtx *c) {
+static void ShortcutRefresh(FL_ShortCtx *c, int error) {
   c->setup[FL_SHORTCUT_CONTEXT] =
       ShortcutExplorerDirectoryBackground(c, SHORTCUT_MODE_QUERY);
   c->button[FL_SHORTCUT_CONTEXT].pszButtonText =
-      c->setup[FL_SHORTCUT_CONTEXT] ? L"Remove from directory background"
-                                    : L"Add to directory background";
+      c->setup[FL_SHORTCUT_CONTEXT] ? MAKEINTRESOURCE(IDS_SHORTCUT_DEL_DIR_BG)
+                                    : MAKEINTRESOURCE(IDS_SHORTCUT_ADD_DIR_BG);
   c->setup[FL_SHORTCUT_SENDTO] = ShortcutSendTo(c, SHORTCUT_MODE_QUERY);
   c->button[FL_SHORTCUT_SENDTO].pszButtonText =
-      c->setup[FL_SHORTCUT_SENDTO] ? L"Remove from SendTo" : L"Add to SendTo";
+      c->setup[FL_SHORTCUT_SENDTO] ? MAKEINTRESOURCE(IDS_SHORTCUT_DEL_SENDTO)
+                                   : MAKEINTRESOURCE(IDS_SHORTCUT_ADD_SENDTO);
+
+  if (error) {
+    c->dlg.pszFooterIcon = TD_WARNING_ICON;
+    c->dlg.pszFooter = MAKEINTRESOURCE(error);
+  } else {
+    c->dlg.pszFooterIcon = NULL;
+    c->dlg.pszFooter = NULL;
+  }
 }
 
 static const ShortcutTogglers kShortcutToggler[FL_SHORTCUT_MAX] = {
@@ -216,9 +238,11 @@ static HRESULT CALLBACK DlgShortcutProc(
     if (BUTTON_ID_START <= wParam &&
         wParam < BUTTON_ID_START + FL_SHORTCUT_MAX) {
       int id = wParam - BUTTON_ID_START;
-      kShortcutToggler[id](
+      int succ = kShortcutToggler[id](
           c, c->setup[id] ? SHORTCUT_MODE_DELETE : SHORTCUT_MODE_CREATE);
-      ShortcutRefresh(c);
+      // if (GetTickCount() / 1000 % 2 == 0) succ = 0;
+      int err = c->setup[id] ? IDS_SHORTCUT_ERROR_DEL : IDS_SHORTCUT_ERROR_ADD;
+      ShortcutRefresh(c, succ ? 0 : err);
       c->dlg.nDefaultButton = wParam;
       SendMessage(hWnd, TDM_NAVIGATE_PAGE, 0, (LPARAM)&c->dlg);
       return S_FALSE;

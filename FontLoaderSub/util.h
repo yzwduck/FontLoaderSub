@@ -54,3 +54,5 @@ int FlVersionCmp(const wchar_t *a, const wchar_t *b);
 int FlStrCmpIW(const wchar_t *a, const wchar_t *b);
 
 BOOL PerMonitorDpiHack();
+
+const TCHAR *ResLoadString(HMODULE hInstance, UINT idText);

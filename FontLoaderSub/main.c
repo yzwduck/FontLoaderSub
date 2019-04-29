@@ -8,6 +8,7 @@
 #include "path.h"
 #include "shortcut.h"
 #include "mock_config.h"
+#include "res/resource.h"
 
 #define kAppTitle L"FontLoaderSub r5"
 #define kCacheFile L"fc-subs.db"
@@ -25,12 +26,12 @@ static void *mem_realloc(void *existing, size_t size, void *arg) {
 }
 
 typedef enum {
-  APP_LOAD_SUB = 0,
-  APP_LOAD_CACHE,
-  APP_SCAN_FONT,
-  APP_LOAD_FONT,
-  APP_UNLOAD_FONT,
-  APP_DONE
+  APP_LOAD_SUB = IDS_WORK_SUBTITLE,
+  APP_LOAD_CACHE = IDS_WORK_CACHE,
+  APP_SCAN_FONT = IDS_WORK_FONT,
+  APP_LOAD_FONT = IDS_WORK_LOAD,
+  APP_UNLOAD_FONT = IDS_WORK_UNLOAD,
+  APP_DONE = IDS_WORK_DONE
 } FL_AppState;
 
 typedef struct {
@@ -44,7 +45,7 @@ typedef struct {
   int req_exit;
   FL_LoaderCtx loader;
   FL_AppState app_state;
-  wchar_t status_txt[128];  // should be sufficient
+  wchar_t status_txt[256];  // should be sufficient
   str_db_t log;
   const wchar_t *font_path;
   // wchar_t exe_path[MAX_PATH];
@@ -70,13 +71,6 @@ static void AppHelpUsage(FL_AppCtx *c, HWND hWnd) {
   if (c->show_shortcut) {
     ShortcutShow(&c->shortcut, hWnd);
   }
-  return;
-  TaskDialog(
-      hWnd, c->hInst, kAppTitle, L"Usage",
-      L"1. Move EXE to font folder,\n"
-      L"2. Drop ass/ssa/folder onto EXE,\n"
-      L"3. Hit \"Retry\"?",
-      TDCBF_CLOSE_BUTTON, TD_INFORMATION_ICON, NULL);
 }
 
 static int AppBuildLog(FL_AppCtx *c) {
@@ -121,41 +115,29 @@ static int AppUpdateStatus(FL_AppCtx *c) {
   if (c->loader.font_set) {
     fs_stat(c->loader.font_set, &stat);
   }
-  wsprintfW(
-      c->status_txt,
-      L"%d loaded. %d failed. %d unmatched.\n%d files. %d fonts. %d subs.",
-      c->loader.num_font_loaded, c->loader.num_font_failed,
-      c->loader.num_font_unmatched, stat.num_file, stat.num_face,
-      c->loader.num_sub);
 
-  const wchar_t *cap;
+  DWORD_PTR args[] = {
+      // arguments
+      c->loader.num_font_loaded,
+      c->loader.num_font_failed,
+      c->loader.num_font_unmatched,
+      stat.num_file,
+      stat.num_face,
+      c->loader.num_sub,
+  };
+  FormatMessage(
+      FORMAT_MESSAGE_FROM_STRING | FORMAT_MESSAGE_ARGUMENT_ARRAY,
+      ResLoadString(c->hInst, IDS_LOAD_STAT), 0, 0, c->status_txt,
+      _countof(c->status_txt), (va_list *)args);
+
+  LPARAM cap_id;
   if (c->cancelled) {
-    cap = L"Cancelling";
+    cap_id = IDS_WORK_CANCELLING;
   } else {
-    switch (c->app_state) {
-    case APP_LOAD_SUB:
-      cap = L"Subtitle";
-      break;
-    case APP_LOAD_CACHE:
-      cap = L"Cache";
-      break;
-    case APP_SCAN_FONT:
-      cap = L"Font";
-      break;
-    case APP_LOAD_FONT:
-      cap = L"Load";
-      break;
-    case APP_UNLOAD_FONT:
-      cap = L"Unload";
-      break;
-    default:
-      cap = L"Done";
-      break;
-    }
+    cap_id = c->app_state;
   }
 
-  SendMessage(
-      c->work_hwnd, TDM_SET_ELEMENT_TEXT, TDE_MAIN_INSTRUCTION, (LPARAM)cap);
+  SendMessage(c->work_hwnd, TDM_SET_ELEMENT_TEXT, TDE_MAIN_INSTRUCTION, cap_id);
   SendMessage(
       c->work_hwnd, TDM_SET_ELEMENT_TEXT, TDE_CONTENT, (LPARAM)c->status_txt);
 
@@ -259,8 +241,8 @@ static HRESULT CALLBACK DlgWorkProc(
       AppUpdateStatus(c);
     }
   } else if (uNotification == TDN_TIMER) {
-    AppUpdateStatus(c);
     DWORD r = WaitForSingleObject(c->thread_load, 0);
+    AppUpdateStatus(c);
     if (r != WAIT_TIMEOUT) {
       CloseHandle(c->thread_load);
       c->thread_load = NULL;
@@ -356,7 +338,7 @@ static int AppInit(FL_AppCtx *c, HINSTANCE hInst, allocator_t *alloc) {
 
   c->dlg_work.cbSize = sizeof c->dlg_work;
   c->dlg_work.hInstance = hInst;
-  c->dlg_work.pszWindowTitle = kAppTitle;
+  c->dlg_work.pszWindowTitle = MAKEINTRESOURCE(IDS_APP_NAME_VER);
   c->dlg_work.dwCommonButtons = TDCBF_CANCEL_BUTTON;
   c->dlg_work.dwFlags =
       TDF_SHOW_MARQUEE_PROGRESS_BAR | TDF_CALLBACK_TIMER | TDF_SIZE_TO_CONTENT;
@@ -366,28 +348,23 @@ static int AppInit(FL_AppCtx *c, HINSTANCE hInst, allocator_t *alloc) {
 
   c->dlg_done.cbSize = sizeof c->dlg_done;
   c->dlg_done.hInstance = hInst;
-  c->dlg_done.pszWindowTitle = kAppTitle;
+  c->dlg_done.pszWindowTitle = MAKEINTRESOURCE(IDS_APP_NAME_VER);
   c->dlg_done.dwCommonButtons =
       TDCBF_CLOSE_BUTTON | TDCBF_RETRY_BUTTON | TDCBF_OK_BUTTON;
-  c->dlg_done.pszMainInstruction = L"Done";
-  c->dlg_done.dwFlags =
-      TDF_CAN_BE_MINIMIZED | TDF_ENABLE_HYPERLINKS | TDF_SIZE_TO_CONTENT;
+  c->dlg_done.pszMainInstruction = MAKEINTRESOURCE(IDS_WORK_DONE);
+  c->dlg_done.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_ENABLE_HYPERLINKS |
+                        TDF_SIZE_TO_CONTENT;
   c->dlg_done.pszFooterIcon = TD_SHIELD_ICON;
-  c->dlg_done.pszFooter =
-      L"GPLv2: <A HREF=\"https://github.com/yzwduck/FontLoaderSub\">"
-      L"github.com/yzwduck/FontLoaderSub</A>";
+  c->dlg_done.pszFooter = MAKEINTRESOURCE(IDS_LICENSE);
   c->dlg_done.lpCallbackData = (LONG_PTR)c;
   c->dlg_done.pfCallback = DlgDoneProc;
 
   c->dlg_help.cbSize = sizeof c->dlg_help;
   c->dlg_help.hInstance = hInst;
-  c->dlg_help.pszWindowTitle = kAppTitle;
+  c->dlg_help.pszWindowTitle = MAKEINTRESOURCE(IDS_APP_NAME_VER);
   c->dlg_help.pszMainIcon = TD_INFORMATION_ICON;
-  c->dlg_help.pszMainInstruction = L"Usage";
-  c->dlg_help.pszContent =
-      L"1. Move EXE to font folder,\n"
-      L"2. Drop ass/ssa/folder onto EXE, or <A HREF=\"\">use shortcuts</A>,\n"
-      L"3. Hit \"Retry\"?";
+  c->dlg_help.pszMainInstruction = MAKEINTRESOURCE(IDS_HELP);
+  c->dlg_help.pszContent = MAKEINTRESOURCE(IDS_USAGE);
   c->dlg_help.dwCommonButtons = TDCBF_CLOSE_BUTTON;
   c->dlg_help.dwFlags = TDF_ENABLE_HYPERLINKS | TDF_ALLOW_DIALOG_CANCELLATION;
   c->dlg_help.lpCallbackData = (LONG_PTR)c;
@@ -419,10 +396,11 @@ static int AppInit(FL_AppCtx *c, HINSTANCE hInst, allocator_t *alloc) {
     return 0;
   ShortcutInit(&c->shortcut, hInst, c->alloc);
   c->shortcut.key = L"FontLoaderSub";  // registry key
-  c->shortcut.dlg_title = kAppTitle;
-  c->shortcut.explorer_menu_title = L"FontLoaderSub here";
-  c->shortcut.sendto_title = L"FontLoaderSub";
+  c->shortcut.dlg_title = MAKEINTRESOURCE(IDS_APP_NAME_VER);
+  c->shortcut.dir_bg_menu_str_id = IDS_SHELL_VERB;
+  c->shortcut.sendto_str_id = IDS_SENDTO;
   c->shortcut.path = str_db_get(&c->full_exe_path, 0);
+  c->app_state = APP_LOAD_SUB;
   if (fl_init(&c->loader, c->alloc) != FL_OK)
     return 0;
   str_db_init(&c->log, c->alloc, 0, 0);
@@ -450,7 +428,7 @@ static int AppInit(FL_AppCtx *c, HINSTANCE hInst, allocator_t *alloc) {
 }
 
 static int AppRun(FL_AppCtx *c) {
-  if (GetAsyncKeyState(VK_SHIFT)) {
+  if (0 || GetAsyncKeyState(VK_SHIFT)) {
     ShortcutShow(&c->shortcut, NULL);
     return 0;
   }

@@ -282,3 +282,14 @@ BOOL PerMonitorDpiHack() {
 
   return 0;
 }
+
+const TCHAR *ResLoadString(HMODULE hInstance, UINT idText) {
+  int res;
+  const TCHAR *textptr = NULL;
+  res = LoadString(hInstance, idText, (TCHAR *)&textptr, 0);
+  if (textptr == NULL) {
+    // logA("Failed to load res string");
+    textptr = L"";  // failback
+  }
+  return textptr;
+}
