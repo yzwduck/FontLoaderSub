@@ -57,12 +57,12 @@ static int is_interested_name_id(uint16_t name_id) {
   switch (name_id) {
   case 1:  // Font Family name
   case 4:  // Full font name
+  case 6:  // PostScript name for the font
     return 1;
   case 0:   // Copyright notice
   case 2:   // Font Subfamily name
   case 3:   // Unique font identifier
   case 5:   // Version string
-  case 6:   // PostScript name for the font
   case 7:   // Trademark
   case 8:   // Manufacturer Name
   case 9:   // Designer
