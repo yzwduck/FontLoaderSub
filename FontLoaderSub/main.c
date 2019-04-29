@@ -85,10 +85,10 @@ static int AppBuildLog(FL_AppCtx *c) {
     FL_FontMatch *m = &data[i];
     if (m->flag & (FL_OS_LOADED | FL_LOAD_OK))
       tag = L"[ok] ";
-    else if (m->flag & (FL_LOAD_ERR))
-      tag = L"[ X] ";
     else if (m->flag & (FL_LOAD_DUP))
       tag = L"[^ ] ";
+    else if (m->flag & (FL_LOAD_ERR))
+      tag = L"[ X] ";
     else if (1 || m->flag & (FL_LOAD_MISS))
       tag = L"[??] ";
     if (!str_db_push_u16_le(log, tag, 0) ||

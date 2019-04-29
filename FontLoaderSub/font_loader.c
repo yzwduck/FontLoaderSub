@@ -544,7 +544,7 @@ int fl_load_fonts(FL_LoaderCtx *c) {
         FL_FontMatch m;
         FL_FontMatch *data = c->loaded_font.data;
         FL_FontMatch *ref = &data[dup_candidate];
-        m.flag = FL_LOAD_DUP;
+        m.flag = FL_LOAD_DUP | data[dup_candidate].flag;
         m.face = face;
         m.filename = ref->filename;
         vec_append(&c->loaded_font, &m, 1);
