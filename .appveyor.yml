@@ -13,9 +13,7 @@ install:
 
 build_script:
 - msbuild /p:Platform=x86 /p:Configuration=Minimize
-- msbuild /p:Platform=x86 /p:Configuration=Release
 - msbuild /p:Platform=x64 /p:Configuration=Minimize
-- msbuild /p:Platform=x64 /p:Configuration=Release
 
 after_build:
 - ps: |
@@ -25,7 +23,6 @@ after_build:
 
     $CONFIGS = @(
         "Minimize";
-        "Release";
         "UPX";
     )
     foreach ($conf in $CONFIGS) {
