@@ -14,7 +14,7 @@ int FlMemMap(const wchar_t *path, memmap_t *mmap) {
     if (h == INVALID_HANDLE_VALUE)
       break;
     mmap->map = CreateFileMapping(h, NULL, PAGE_READONLY, 0, 0, NULL);
-    if (mmap->map == INVALID_HANDLE_VALUE)
+    if (mmap->map == NULL)
       break;
     mmap->data = MapViewOfFile(mmap->map, FILE_MAP_READ, 0, 0, 0);
     if (mmap->data == NULL)
