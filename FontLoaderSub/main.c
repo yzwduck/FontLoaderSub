@@ -239,7 +239,7 @@ static HRESULT CALLBACK DlgWorkProc(
   } else if (uNotification == TDN_BUTTON_CLICKED) {
     if (wParam == IDCANCEL) {
       if (c->app_state == APP_CANCELLED) {
-        SendMessage(HWND_BROADCAST, WM_FONTCHANGE, 0, 0);
+        // SendMessage(HWND_BROADCAST, WM_FONTCHANGE, 0, 0);
         return S_OK;  // exit cleared
       }
       if (!c->req_exit) {
@@ -268,7 +268,7 @@ static HRESULT CALLBACK DlgWorkProc(
           }
           AppUpdateStatus(c);
           c->dlg_done.pszContent = c->status_txt;
-          SendMessage(HWND_BROADCAST, WM_FONTCHANGE, 0, 0);
+          // SendMessage(HWND_BROADCAST, WM_FONTCHANGE, 0, 0);
           SendMessage(hWnd, TDM_NAVIGATE_PAGE, 0, (LPARAM)&c->dlg_done);
           navigated = 1;
         } else {
