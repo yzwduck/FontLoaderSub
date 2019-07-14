@@ -137,6 +137,9 @@
     <Link>
       <AdditionalDependencies>ShLwApi.Lib;ComCtl32.Lib;Bcrypt.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <ResourceCompile>
+      <PreprocessorDefinitions>$(CMDLINE_DEFINE);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -148,6 +151,9 @@
     <Link>
       <AdditionalDependencies>ShLwApi.Lib;ComCtl32.Lib;Bcrypt.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <ResourceCompile>
+      <PreprocessorDefinitions>$(CMDLINE_DEFINE);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -165,6 +171,9 @@
       <OptimizeReferences>true</OptimizeReferences>
       <AdditionalDependencies>ShLwApi.Lib;ComCtl32.Lib;Bcrypt.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <ResourceCompile>
+      <PreprocessorDefinitions>$(CMDLINE_DEFINE);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Minimize|Win32'">
     <ClCompile>
@@ -190,6 +199,9 @@
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
       <AdditionalOptions>/EMITPOGOPHASEINFO %(AdditionalOptions)</AdditionalOptions>
     </Link>
+    <ResourceCompile>
+      <PreprocessorDefinitions>$(CMDLINE_DEFINE);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -207,6 +219,9 @@
       <OptimizeReferences>true</OptimizeReferences>
       <AdditionalDependencies>ShLwApi.Lib;ComCtl32.Lib;Bcrypt.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <ResourceCompile>
+      <PreprocessorDefinitions>$(CMDLINE_DEFINE);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Minimize|x64'">
     <ClCompile>
@@ -232,11 +247,21 @@
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
       <AdditionalOptions>/EMITPOGOPHASEINFO %(AdditionalOptions)</AdditionalOptions>
     </Link>
+    <ResourceCompile>
+      <PreprocessorDefinitions>$(CMDLINE_DEFINE);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ResourceCompile Include="res\res.rc" />
     <ResourceCompile Include="res\res_en-us.rc" />
-    <ResourceCompile Include="res\res_zh-cn.rc" />
+    <ResourceCompile Include="res\res_zh-cn.rc">
+      <Culture Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">0x0804</Culture>
+      <Culture Condition="'$(Configuration)|$(Platform)'=='Minimize|Win32'">0x0804</Culture>
+      <Culture Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">0x0804</Culture>
+      <Culture Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">0x0804</Culture>
+      <Culture Condition="'$(Configuration)|$(Platform)'=='Minimize|x64'">0x0804</Culture>
+      <Culture Condition="'$(Configuration)|$(Platform)'=='Release|x64'">0x0804</Culture>
+    </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
     <Manifest Include="res\app.manifest" />

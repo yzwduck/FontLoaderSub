@@ -11,7 +11,7 @@
 LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
 STRINGTABLE
 {
-  IDS_APP_NAME_VER "FontLoaderSub r5"
+  IDS_APP_NAME_VER "FontLoaderSub r5-" FONTLOADERSUB_GIT_COMMIT
   IDS_SHELL_VERB "FontLoaderSub here"
   IDS_SENDTO "FontLoaderSub"
   IDS_LOAD_STAT "%1!i! loaded. %2!i! failed. %3!i! unmatched.\n%4!i! files. %5!i! fonts. %6!i! subs."

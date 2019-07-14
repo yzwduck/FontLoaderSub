@@ -7,6 +7,8 @@ install:
     $env:COMM_TAG = $(git describe --always)
     $env:PROJECT = "FontLoaderSub"
     $env:BUILD = "{0}-{1}" -f $env:PROJECT, $env:COMM_TAG
+    $env:COMMIT_HASH = $(git rev-parse --short=7 HEAD)
+    $env:CMDLINE_DEFINE = "FONTLOADERSUB_GIT_COMMIT=\""{0}\""" -f $env:COMMIT_HASH
     curl.exe -fsSL -o upx-3.95-win32.zip "https://github.com/upx/upx/releases/download/v3.95/upx-3.95-win32.zip"
     7z x upx-3.95-win32.zip
     Remove-Item -Path upx-3.95-win32.zip -Force

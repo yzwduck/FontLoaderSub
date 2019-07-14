@@ -1,6 +1,10 @@
 #ifndef RESOURCE_H
 #define RESOURCE_H
 
+#ifndef FONTLOADERSUB_GIT_COMMIT
+#define FONTLOADERSUB_GIT_COMMIT "unknown"
+#endif
+
 #define IDS_APP_NAME_VER 2
 #define IDS_SHELL_VERB 4
 #define IDS_SENDTO 6
