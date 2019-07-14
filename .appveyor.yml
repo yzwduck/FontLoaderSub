@@ -15,13 +15,11 @@ install:
 
 build_script:
 - msbuild /p:Platform=x86 /p:Configuration=Minimize
-- msbuild /p:Platform=x64 /p:Configuration=Minimize
 
 after_build:
 - ps: |
     New-Item -ItemType directory -Path UPX
     .\upx-3.95-win32\upx.exe -o "UPX\$env:PROJECT.exe" "Minimize\Win32\$env:PROJECT.exe"
-    .\upx-3.95-win32\upx.exe -o "UPX\$env:PROJECT-64.exe" "Minimize\x64\$env:PROJECT.exe"
 
     $CONFIGS = @(
         "Minimize";
