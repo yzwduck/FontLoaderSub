@@ -134,16 +134,29 @@ static const IEnumShellItemsVtbl kLFEC_Verb = {
 
 static HRESULT LFEC_Create(FL_AppCtx *app, IEnumShellItems **ppenum) {
   FL_LoaderCtx *fl = &app->loader;
-  const WCHAR *font_path = str_db_get(&fl->font_path, 0);
+  WCHAR font_path_hack = 0;
+  WCHAR *font_path = (WCHAR *)str_db_get(&fl->font_path, 0);
   if (font_path == NULL)
     return E_FAIL;
   if (font_path[0] == L'\\' && font_path[1] == L'\\' && font_path[2] == L'?' &&
       font_path[3] == L'\\') {
+    // case 1: \\?\E:\... -> E:\...
     font_path += 4;
+    if (font_path[0] == L'U' && font_path[1] == L'N' && font_path[2] == L'C' &&
+        font_path[3] == L'\\') {
+      // case 2: \\?\UNC\tsclient\... -> \\tsclient\...
+      // hack the first backslash
+      font_path += 2;
+      font_path_hack = font_path[0];
+      font_path[0] = L'\\';
+    }
   }
   IShellItem *dir_root = NULL;
   HRESULT hr = SHCreateItemFromParsingName(
       font_path, NULL, &IID_IShellItem, (void **)&dir_root);
+  if (font_path_hack) {
+    font_path[0] = font_path_hack;
+  }
   if (FAILED(hr))
     return hr;
 
@@ -173,6 +186,7 @@ int ExportLoadedFonts(HWND hWnd, FL_AppCtx *c) {
   IFileOperation *file_opt = NULL;
 
   do {
+    // prepare "Select folder" dialog
     hr = CoCreateInstance(
         &CLSID_FileOpenDialog, NULL, CLSCTX_INPROC_SERVER, &IID_IFileOpenDialog,
         (void **)&pfd);
@@ -184,9 +198,10 @@ int ExportLoadedFonts(HWND hWnd, FL_AppCtx *c) {
     hr = pfd->lpVtbl->SetOptions(pfd, options | FOS_PICKFOLDERS);
     if (FAILED(hr))
       break;
-    hr = pfd->lpVtbl->Show(pfd, hWnd);  // hwnd
+    hr = pfd->lpVtbl->Show(pfd, hWnd);
     if (hr == HRESULT_FROM_WIN32(ERROR_CANCELLED)) {
       // cancelled
+      succ = 1;
       break;
     } else if (FAILED(hr))
       break;
@@ -198,6 +213,7 @@ int ExportLoadedFonts(HWND hWnd, FL_AppCtx *c) {
     if (FAILED(hr))
       break;
 
+    // prepare font list and copy
     hr = LFEC_Create(c, &font_enum);
     if (FAILED(hr))
       break;
@@ -217,15 +233,18 @@ int ExportLoadedFonts(HWND hWnd, FL_AppCtx *c) {
       break;
 
     ShellExecute(NULL, NULL, path_name, NULL, NULL, SW_SHOW);
-    succ = 0;
+    succ = 1;
   } while (0);
 
+  C_SAVE_RELEASE(pfd);
+  C_SAVE_RELEASE(result);
+  C_SAVE_RELEASE(font_enum);
+  C_SAVE_RELEASE(file_opt);
+  CoTaskMemFree(path_name);
   if (!succ) {
-    C_SAVE_RELEASE(pfd);
-    C_SAVE_RELEASE(result);
-    C_SAVE_RELEASE(font_enum);
-    C_SAVE_RELEASE(file_opt);
-    CoTaskMemFree(path_name);
+    TaskDialog(
+        NULL, c->hInst, MAKEINTRESOURCE(IDS_APP_NAME_VER), L"Error...", NULL,
+        TDCBF_CLOSE_BUTTON, TD_ERROR_ICON, NULL);
   }
   return 0;
 }

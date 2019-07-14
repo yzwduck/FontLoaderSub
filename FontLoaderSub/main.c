@@ -483,12 +483,12 @@ static int AppInit(FL_AppCtx *c, HINSTANCE hInst, allocator_t *alloc) {
   if (c->evt_stop_cache == NULL)
     return 0;
 
-    if (SUCCEEDED(CoCreateInstance(
-            &CLSID_TaskbarList, NULL, CLSCTX_INPROC_SERVER, &IID_ITaskbarList3,
-            (void **)&c->taskbar_list3))) {
-      if (FAILED(c->taskbar_list3->lpVtbl->HrInit(c->taskbar_list3))) {
-        c->taskbar_list3->lpVtbl->Release(c->taskbar_list3);
-        c->taskbar_list3 = NULL;
+  if (SUCCEEDED(CoCreateInstance(
+          &CLSID_TaskbarList, NULL, CLSCTX_INPROC_SERVER, &IID_ITaskbarList3,
+          (void **)&c->taskbar_list3))) {
+    if (FAILED(c->taskbar_list3->lpVtbl->HrInit(c->taskbar_list3))) {
+      c->taskbar_list3->lpVtbl->Release(c->taskbar_list3);
+      c->taskbar_list3 = NULL;
     }
   }
 
@@ -524,14 +524,10 @@ int WINAPI _tWinMain(
   if (CoInitializeEx(NULL, COINIT_APARTMENTTHREADED) != S_OK) {
     return 0;
   }
-  int r = test_main();
-  if (r)
-    return r;
 
   HANDLE heap = HeapCreate(0, 0, 0);
   allocator_t alloc = {.alloc = mem_realloc, .arg = heap};
   FL_AppCtx *ctx = &g_app;
-  // FL_AppCtx *ctx = alloc.alloc(NULL, sizeof *ctx, alloc.arg);
   if (ctx == NULL || !AppInit(ctx, hInstance, &alloc)) {
     TaskDialog(
         NULL, hInstance, MAKEINTRESOURCE(IDS_APP_NAME_VER), L"Error...", NULL,
