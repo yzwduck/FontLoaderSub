@@ -10,7 +10,7 @@
   ((uint32_t)(((uint8_t)(d) << 24)) | (uint32_t)(((uint8_t)(c) << 16)) | \
    (uint32_t)(((uint8_t)(b) << 8)) | (uint32_t)(((uint8_t)(a))))
 
-#define KFontDbMagic (MAKE_TAG('f', 'l', 'd', 'c'))
+#define KFontDbMagic (MAKE_TAG('f', 'l', 'd', 'd'))
 
 struct _FS_Set {
   allocator_t *alloc;
@@ -37,8 +37,12 @@ typedef struct {
 
 #define kTagVersion L"\tv:"
 #define kTagVersionLen (3)
+#define kTagFormat L"\tt:"
+#define kTagFormatLen (3)
 #define kTagError L"\t!!"
 #define kTagErrorLen (3)
+
+static void fs_format_tag_to_str(FS_Format fmt, WCHAR s[4]);
 
 static int fs_parser_name_cb(
     uint32_t font_id,
@@ -134,15 +138,24 @@ int fs_stat(FS_Set *s, FS_Stat *stat) {
 }
 
 int fs_add_font(FS_Set *s, const wchar_t *tag, void *buf, size_t size) {
-  int ok = 0, r;
+  int ok = 0, r = FL_OK;
   str_db_t *db = &s->db;
   const size_t pos_filename = str_db_tell(db);
-  if (str_db_push_u16_le(db, tag, 0) == NULL)
-    return FL_OUT_OF_MEMORY;
-  const size_t pos_db = str_db_tell(db);
+  size_t pos_db = 0, pos_db_fmt = 0;
 
   FS_ParseCtx ctx;
+  WCHAR fmt[4];
   do {
+    if (str_db_push_u16_le(db, tag, 0) == NULL)
+      break;
+    // try TTC
+    pos_db_fmt = str_db_tell(db);
+    fs_format_tag_to_str(FS_FmtTTC, fmt);
+    if (str_db_push_prefix(db, kTagFormat, kTagFormatLen) == NULL ||
+        str_db_push_u16_le(db, fmt, 0) == NULL)
+      break;
+
+    pos_db = str_db_tell(db);
     ctx = (FS_ParseCtx){.set = s, .pos_ver = pos_db, .pos_face = pos_db};
     r = ttc_parse(buf, size, fs_parser_name_cb, &ctx);
     if (r == FL_OK && ctx.count_face > 0) {
@@ -150,7 +163,15 @@ int fs_add_font(FS_Set *s, const wchar_t *tag, void *buf, size_t size) {
       break;
     }
 
-    str_db_seek(db, pos_db);
+    // try with TTF/OTF
+    const uint8_t *buffer = (const uint8_t *)buf;
+    fs_format_tag_to_str(buffer[0] == 'O' ? FS_FmtOTF : FS_FmtTTF, fmt);
+    str_db_seek(db, pos_db_fmt);
+    if (str_db_push_prefix(db, kTagFormat, kTagFormatLen) == NULL ||
+        str_db_push_u16_le(db, fmt, 0) == NULL)
+      break;
+
+    pos_db = str_db_tell(db);
     ctx = (FS_ParseCtx){.set = s, .pos_ver = pos_db, .pos_face = pos_db};
     r = otf_parse(buf, size, fs_parser_name_cb, &ctx);
     if (r == FL_OK && ctx.count_face > 0) {
@@ -172,10 +193,13 @@ int fs_add_font(FS_Set *s, const wchar_t *tag, void *buf, size_t size) {
     s->stat.num_face += ctx.count_face;
   } else {
     // try preserve error message
-    str_db_seek(db, pos_db);
-    const wchar_t *m1 = str_db_push_u16_le(db, kTagError, kTagErrorLen);
-    const wchar_t *m2 = str_db_push_u16_le(db, L"", 0);
-    FlBreak();
+    const wchar_t *m1 = NULL, *m2 = NULL;
+    if (pos_db != 0) {
+      str_db_seek(db, pos_db);
+      m1 = str_db_push_u16_le(db, kTagError, kTagErrorLen);
+      m2 = str_db_push_u16_le(db, L"", 0);
+      FlBreak();
+    }
     if (!(m1 && m2)) {
       // completely rollback
       str_db_seek(db, pos_filename);
@@ -185,16 +209,86 @@ int fs_add_font(FS_Set *s, const wchar_t *tag, void *buf, size_t size) {
   return r;
 }
 
-int fs_idx_comp(const void *pa, const void *pb, void *arg) {
+static int fs_idx_comp(const void *pa, const void *pb, void *arg) {
   // FS_Set *s = arg;
   const FS_Index *a = pa, *b = pb;
-  int cmp = FlStrCmpIW(a->face, b->face);
 
+  // first, compare the name
+  int cmp = FlStrCmpIW(a->face, b->face);
   if (cmp == 0) {
-    cmp = FlVersionCmp(a->ver, b->ver);
+    // second, compare by format
+    cmp = 0 - (a->format - b->format);
+    if (cmp == 0) {
+      // last, compare by version
+      cmp = 0 - FlVersionCmp(a->ver, b->ver);
+    }
   }
 
   return cmp;
+}
+
+static FS_Format fs_format_str_to_tag(const WCHAR s[4]) {
+  if (s[0] == L'o' && s[1] == L't' && s[2] == L'f' && s[3] == 0) {
+    return FS_FmtOTF;
+  }
+  if (s[0] == L't' && s[1] == L't' && s[2] == L'f' && s[3] == 0) {
+    return FS_FmtTTF;
+  }
+  if (s[0] == L't' && s[1] == L't' && s[2] == L'c' && s[3] == 0) {
+    return FS_FmtTTC;
+  }
+  return FS_FmtNone;
+}
+
+static void fs_format_tag_to_str(FS_Format fmt, WCHAR s[4]) {
+  switch (fmt) {
+  case FS_FmtOTF:
+    s[0] = L'o';
+    s[1] = L't';
+    s[2] = L'f';
+    s[3] = 0;
+    break;
+  case FS_FmtTTF:
+    s[0] = L't';
+    s[1] = L't';
+    s[2] = L'f';
+    s[3] = 0;
+    break;
+  case FS_FmtTTC:
+    s[0] = L't';
+    s[1] = L't';
+    s[2] = L'c';
+    s[3] = 0;
+    break;
+  default:
+    s[0] = 0;
+  }
+}
+
+static void fs_debug_write_line(HANDLE f, const WCHAR *line) {
+  SIZE_T nb = lstrlen(line) * sizeof line[0];
+  SIZE_T out = 0;
+  WriteFile(f, line, nb, &out, NULL);
+}
+
+static void fs_index_debug_dump(FS_Set *s) {
+  HANDLE f = CreateFile(
+      L"FontIndexDebugDump.txt", GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
+      FILE_ATTRIBUTE_NORMAL, NULL);
+  for (unsigned int i = 0; i != s->stat.num_face; i++) {
+    WCHAR fmt[4];
+    fs_format_tag_to_str(s->index[i].format, fmt);
+    fs_debug_write_line(f, L"[");
+    fs_debug_write_line(f, fmt);
+    fs_debug_write_line(f, L"] ");
+    fs_debug_write_line(f, s->index[i].face);
+    fs_debug_write_line(f, L" ");
+    fs_debug_write_line(f, s->index[i].tag);
+    fs_debug_write_line(f, L" ");
+    fs_debug_write_line(f, s->index[i].ver);
+    fs_debug_write_line(f, L"\n");
+  }
+  CloseHandle(f);
 }
 
 int fs_build_index(FS_Set *s) {
@@ -222,6 +316,8 @@ int fs_build_index(FS_Set *s) {
     } else if (ass_strncmp(line, kTagVersion, kTagVersionLen) == 0) {
       // update version
       last_idx.ver = line + kTagVersionLen;
+    } else if (ass_strncmp(line, kTagFormat, kTagFormatLen) == 0) {
+      last_idx.format = fs_format_str_to_tag(line + kTagFormatLen);
     } else if (ass_strncmp(line, kTagError, kTagErrorLen) == 0) {
       // ignore
     } else if (!has_filename) {
@@ -246,6 +342,7 @@ int fs_build_index(FS_Set *s) {
   if (!err) {
     // sort
     tim_sort(idx, stat.num_face, sizeof idx[0], s->alloc, fs_idx_comp, s);
+    // fs_index_debug_dump(s);
   } else {
     alloc->alloc(idx, 0, alloc->arg);
     idx = NULL;
@@ -256,9 +353,11 @@ int fs_build_index(FS_Set *s) {
 }
 
 int fs_iter_new(FS_Set *s, const wchar_t *face, FS_Iter *it) {
+  if (s == NULL || s->index == NULL || it == NULL)
+    return 0;
   uint32_t a = 0, b = s->stat.num_face - 1;
   uint32_t m = 0;
-  if (s->index != NULL && s->stat.num_face != 0 && it != NULL) {
+  if (s->index != NULL && s->stat.num_face != 0) {
     while (a <= b) {
       m = a + (b - a) / 2;
       const wchar_t *got = s->index[m].face;
@@ -285,14 +384,6 @@ int fs_iter_new(FS_Set *s, const wchar_t *face, FS_Iter *it) {
     while (m > 0 && FlStrCmpIW(face, s->index[m - 1].face) == 0) {
       m--;
     }
-    // find the latest
-    for (b = m + 1; b != s->stat.num_face; b++) {
-      if (FlStrCmpIW(face, s->index[b].face) != 0)
-        break;
-      if (FlVersionCmp(s->index[m].ver, s->index[b].ver) < 0) {
-        m = b;
-      }
-    }
     // result = m
     *it =
         (FS_Iter){.set = s, .query_id = m, .index_id = m, .info = s->index[m]};
@@ -317,14 +408,21 @@ int fs_iter_next(FS_Iter *it) {
   it->index_id++;
   const wchar_t *face = s->index[it->query_id].face;
   const wchar_t *ver = s->index[it->query_id].ver;
+  FS_Format fmt = s->index[it->query_id].format;
 
   for (; it->index_id != s->stat.num_face; it->index_id++) {
     const wchar_t *got_face = s->index[it->index_id].face;
     const wchar_t *got_ver = s->index[it->index_id].ver;
+    FS_Format got_fmt = s->index[it->index_id].format;
 
     // check if prefix matches
     const size_t df = str_cmp_x(face, got_face);
     if (face[df] != 0) {
+      break;
+    }
+
+    // check format
+    if (fmt != got_fmt) {
       break;
     }
 

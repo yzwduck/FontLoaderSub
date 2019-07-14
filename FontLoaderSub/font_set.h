@@ -10,10 +10,19 @@ typedef struct {
   uint32_t num_face;
 } FS_Stat;
 
+// format, in preference order
+typedef enum {
+  FS_FmtNone = 0,  // least preferred
+  FS_FmtOTF = 1,
+  FS_FmtTTF = 2,
+  FS_FmtTTC = 3,  // most preferred
+} FS_Format;
+
 typedef struct {
   const wchar_t *tag;
   const wchar_t *face;
   const wchar_t *ver;
+  FS_Format format;
 } FS_Index;
 
 typedef struct {
