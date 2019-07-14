@@ -27,7 +27,8 @@
 // control id
 #define ID_BTN_MENU 101
 #define ID_BTN_RESCAN 102
-#define ID_BTN_HELP 103
+#define ID_BTN_EXPORT 103
+#define ID_BTN_HELP 104
 
 // menu
 #define IDR_BTN_MENU 1

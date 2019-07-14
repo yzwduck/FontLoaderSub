@@ -247,6 +247,7 @@
     <ClCompile Include="ass_parser.c" />
     <ClCompile Include="ass_string.c" />
     <ClCompile Include="cstl.c" />
+    <ClCompile Include="exporter.c" />
     <ClCompile Include="font_loader.c" />
     <ClCompile Include="font_set.c" />
     <ClCompile Include="main.c" />
@@ -261,8 +262,10 @@
     <ClInclude Include="ass_parser.h" />
     <ClInclude Include="ass_string.h" />
     <ClInclude Include="cstl.h" />
+    <ClInclude Include="exporter.h" />
     <ClInclude Include="font_loader.h" />
     <ClInclude Include="font_set.h" />
+    <ClInclude Include="main.h" />
     <ClInclude Include="mock_config.h" />
     <ClInclude Include="res\resource.h" />
     <ClInclude Include="shortcut.h" />

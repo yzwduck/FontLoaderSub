@@ -41,6 +41,8 @@ IDR_BTN_MENU MENU
   POPUP ""
   {
     MENUITEM "&Rebuild cache", ID_BTN_RESCAN
+    MENUITEM "&Export fonts", ID_BTN_EXPORT
+    MENUITEM SEPARATOR
     MENUITEM "&Help", ID_BTN_HELP
   }
 }

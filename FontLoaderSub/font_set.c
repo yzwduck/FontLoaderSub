@@ -157,6 +157,7 @@ int fs_add_font(FS_Set *s, const wchar_t *tag, void *buf, size_t size) {
       ok = 1;
       break;
     }
+    int break_here = 0;
   } while (0);
 
   if (ok) {

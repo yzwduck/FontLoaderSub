@@ -558,14 +558,7 @@ int fl_load_fonts(FL_LoaderCtx *c) {
   return FL_OK;
 }
 
-typedef int (*WalkLoadedCallback)(
-    FL_LoaderCtx *c,
-    size_t i,
-    const wchar_t *path,
-    void *param);
-
-static int
-fl_walk_loaded_fonts(FL_LoaderCtx *c, WalkLoadedCallback cb, void *param) {
+int fl_walk_loaded_fonts(FL_LoaderCtx *c, WalkLoadedCallback cb, void *param) {
   str_db_seek(&c->walk_path, 0);
   const wchar_t *font_path = str_db_get(&c->font_path, 0);
   if (font_path == NULL || font_path[0] == 0)

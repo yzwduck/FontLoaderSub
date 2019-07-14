@@ -24,7 +24,7 @@ STRINGTABLE
   IDS_WORK_DONE "完成"
   IDS_LICENSE "GPLv2: <A>github.com/yzwduck/FontLoaderSub</A>"
   IDS_HELP "使用方法"
-  IDS_USAGE "1. 将本程序移动到字体文件夹；\n2. 把字幕或文件夹拖动到程序上，或用<A>快捷方式</A>；\n3. 试试 ""刷新缓存""？"
+  IDS_USAGE "1. 将本程序移动到字体文件夹；\n2. 把字幕或文件夹拖动到程序上，或用 <A>快捷方式</A>；\n3. 试试 ""更新缓存""？"
   IDS_MANAGE_SHORTCUT "管理快捷方式"
   IDS_SHORTCUT_ERROR_ADD "创建快捷方式时出错"
   IDS_SHORTCUT_ERROR_DEL "移除快捷方式时出错"
@@ -40,7 +40,9 @@ IDR_BTN_MENU MENU
 {
   POPUP ""
   {
-    MENUITEM "刷新缓存(&R)", ID_BTN_RESCAN
+    MENUITEM "更新缓存(&R)", ID_BTN_RESCAN
+    MENUITEM "导出字体(&E)", ID_BTN_EXPORT
+    MENUITEM SEPARATOR
     MENUITEM "帮助(&H)", ID_BTN_HELP
   }
 }
