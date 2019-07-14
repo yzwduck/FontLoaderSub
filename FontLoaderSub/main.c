@@ -3,6 +3,7 @@
 #include <CommCtrl.h>
 #include <Shobjidl.h>
 
+#include "ass_string.h"
 #include "util.h"
 #include "font_loader.h"
 #include "path.h"
@@ -59,6 +60,8 @@ typedef struct {
   TASKDIALOGCONFIG dlg_work;
   TASKDIALOGCONFIG dlg_done;
   TASKDIALOGCONFIG dlg_help;
+  HMENU btn_menu;        // handle to the menu
+  HWND handle_btn_menu;  // handle to the button
   int show_shortcut;
   FL_ShortCtx shortcut;
   ITaskbarList3 *taskbar_list3;
@@ -313,6 +316,77 @@ static HRESULT CALLBACK DlgHelpProc(
   return S_OK;
 }
 
+static HRESULT CALLBACK DlgDoneButtonDispatch(
+    HWND hWnd,
+    UINT uNotification,
+    WPARAM wParam,
+    LPARAM lParam,
+    FL_AppCtx *c) {
+  // all return S_FALSE: never close dialog
+  switch (wParam) {
+  case IDCANCEL:
+  case IDCLOSE:
+  case ID_BTN_RESCAN: {
+    if (wParam != ID_BTN_RESCAN) {
+      c->req_exit = 1;
+    }
+    SetEvent(c->evt_stop_cache);
+    if (WaitForSingleObject(c->thread_cache, 1000) != WAIT_OBJECT_0) {
+      TerminateThread(c->thread_cache, 2);
+    }
+    CloseHandle(c->thread_cache);
+    c->thread_cache = NULL;
+    c->app_state = APP_UNLOAD_FONT;
+    SendMessage(hWnd, TDM_NAVIGATE_PAGE, 0, (LPARAM)&c->dlg_work);
+    return S_FALSE;
+  }
+  case IDOK: {
+    ShowWindow(hWnd, SW_MINIMIZE);
+    return S_FALSE;
+  }
+  case ID_BTN_MENU: {
+    RECT rect;
+    POINT pt;
+    HMENU menu = GetSubMenu(c->btn_menu, 0);
+    HWND btn = c->handle_btn_menu;
+    if (GetWindowRect(btn, &rect)) {
+      pt.x = rect.left;
+      pt.y = rect.bottom;
+    } else {
+      GetCursorPos(&pt);
+    }
+    BOOL r = TrackPopupMenu(
+        menu, TPM_NONOTIFY | TPM_RETURNCMD, pt.x, pt.y, 0, hWnd, NULL);
+    if (r != FALSE) {
+      return DlgDoneButtonDispatch(hWnd, uNotification, r, lParam, c);
+    }
+    return S_FALSE;
+  }
+  case ID_BTN_HELP: {
+    AppHelpUsage(c, hWnd);
+    return S_FALSE;
+  }
+  default: { return S_FALSE; }
+  }
+}
+
+static BOOL CALLBACK DlgDoneFindMenuBtnCb(HWND hWnd, LPARAM lParam) {
+  FL_AppCtx *c = (FL_AppCtx *)lParam;
+  WCHAR buffer[16];
+  const WCHAR *target = ResLoadString(c->hInst, IDS_MENU);
+  if (target == NULL) {
+    return FALSE;  // stop! we are in trouble
+  }
+  int len = GetWindowText(hWnd, buffer, _countof(buffer));
+  if (len != 0) {
+    if (ass_strncmp(buffer, target, len + 1) == 0) {
+      c->handle_btn_menu = hWnd;
+      return FALSE;
+    }
+  }
+  return TRUE;
+}
+
 static HRESULT CALLBACK DlgDoneProc(
     HWND hWnd,
     UINT uNotification,
@@ -332,68 +406,79 @@ static HRESULT CALLBACK DlgDoneProc(
       ResetEvent(c->evt_stop_cache);
       c->thread_cache = CreateThread(NULL, 0, AppCacheWorker, c, 0, &thread_id);
     }
+
+    // find the "Menu" button
+    c->handle_btn_menu = NULL;
+    EnumChildWindows(hWnd, DlgDoneFindMenuBtnCb, (LPARAM)c);
   } else if (uNotification == TDN_HYPERLINK_CLICKED) {
-    ShellExecute(NULL, NULL, (LPCWSTR)lParam, NULL, NULL, SW_SHOW);
+    // the only URL is the github repo
+    const WCHAR *url = L"https://github.com/yzwduck/FontLoaderSub";
+    url = L"";
+    ShellExecute(NULL, NULL, url, NULL, NULL, SW_SHOW);
   } else if (uNotification == TDN_BUTTON_CLICKED) {
-    if (wParam == IDCANCEL || wParam == IDCLOSE || wParam == IDRETRY) {
-      if (wParam != IDRETRY) {
-        c->req_exit = 1;
-      }
-      SetEvent(c->evt_stop_cache);
-      if (WaitForSingleObject(c->thread_cache, 1000) != WAIT_OBJECT_0) {
-        TerminateThread(c->thread_cache, 2);
-      }
-      CloseHandle(c->thread_cache);
-      c->thread_cache = NULL;
-      c->app_state = APP_UNLOAD_FONT;
-      SendMessage(hWnd, TDM_NAVIGATE_PAGE, 0, (LPARAM)&c->dlg_work);
-      return S_FALSE;
-    }
-    if (wParam == IDOK) {
-      ShowWindow(hWnd, SW_MINIMIZE);
-      return S_FALSE;
-    }
+    return DlgDoneButtonDispatch(hWnd, uNotification, wParam, lParam, c);
   }
   return S_OK;
 }
+
+static const TASKDIALOGCONFIG kDlgWorkTemplate = {
+    .cbSize = sizeof kDlgWorkTemplate,
+    .pszWindowTitle = MAKEINTRESOURCE(IDS_APP_NAME_VER),
+    .dwCommonButtons = TDCBF_CANCEL_BUTTON,
+    .dwFlags = TDF_SHOW_MARQUEE_PROGRESS_BAR | TDF_CALLBACK_TIMER |
+               TDF_SIZE_TO_CONTENT,
+    .pszMainInstruction = L"",
+    .pfCallback = DlgWorkProc,
+};
+
+static const TASKDIALOG_BUTTON kDlgDoneButtons[] = {
+    {ID_BTN_MENU, MAKEINTRESOURCE(IDS_MENU)}};
+
+static const TASKDIALOGCONFIG kDlgDoneTemplate = {
+    .cbSize = sizeof kDlgDoneTemplate,
+    .pszWindowTitle = MAKEINTRESOURCE(IDS_APP_NAME_VER),
+    .dwCommonButtons = TDCBF_CLOSE_BUTTON | TDCBF_OK_BUTTON,
+    .pszMainInstruction = MAKEINTRESOURCE(IDS_WORK_DONE),
+    .dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_ENABLE_HYPERLINKS |
+               TDF_SIZE_TO_CONTENT,
+    .pszFooterIcon = TD_SHIELD_ICON,
+    .pszFooter = MAKEINTRESOURCE(IDS_LICENSE),
+    .pfCallback = DlgDoneProc,
+    .cButtons = _countof(kDlgDoneButtons),
+    .pButtons = kDlgDoneButtons,
+    .nDefaultButton = IDOK,
+};
+
+static const TASKDIALOGCONFIG kDlgHelpTemplate = {
+    .cbSize = sizeof kDlgHelpTemplate,
+    .pszWindowTitle = MAKEINTRESOURCE(IDS_APP_NAME_VER),
+    .pszMainIcon = TD_INFORMATION_ICON,
+    .pszMainInstruction = MAKEINTRESOURCE(IDS_HELP),
+    .pszContent = MAKEINTRESOURCE(IDS_USAGE),
+    .dwCommonButtons = TDCBF_CLOSE_BUTTON,
+    .dwFlags = TDF_ENABLE_HYPERLINKS | TDF_ALLOW_DIALOG_CANCELLATION,
+    .pfCallback = DlgHelpProc,
+};
 
 static int AppInit(FL_AppCtx *c, HINSTANCE hInst, allocator_t *alloc) {
   c->hInst = hInst;
   c->alloc = alloc;
 
-  c->dlg_work.cbSize = sizeof c->dlg_work;
+  memcpy(&c->dlg_work, &kDlgWorkTemplate, sizeof c->dlg_work);
   c->dlg_work.hInstance = hInst;
-  c->dlg_work.pszWindowTitle = MAKEINTRESOURCE(IDS_APP_NAME_VER);
-  c->dlg_work.dwCommonButtons = TDCBF_CANCEL_BUTTON;
-  c->dlg_work.dwFlags =
-      TDF_SHOW_MARQUEE_PROGRESS_BAR | TDF_CALLBACK_TIMER | TDF_SIZE_TO_CONTENT;
-  c->dlg_work.pszMainInstruction = L"";
   c->dlg_work.lpCallbackData = (LONG_PTR)c;
-  c->dlg_work.pfCallback = DlgWorkProc;
 
-  c->dlg_done.cbSize = sizeof c->dlg_done;
+  memcpy(&c->dlg_done, &kDlgDoneTemplate, sizeof c->dlg_done);
   c->dlg_done.hInstance = hInst;
-  c->dlg_done.pszWindowTitle = MAKEINTRESOURCE(IDS_APP_NAME_VER);
-  c->dlg_done.dwCommonButtons =
-      TDCBF_CLOSE_BUTTON | TDCBF_RETRY_BUTTON | TDCBF_OK_BUTTON;
-  c->dlg_done.pszMainInstruction = MAKEINTRESOURCE(IDS_WORK_DONE);
-  c->dlg_done.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_ENABLE_HYPERLINKS |
-                        TDF_SIZE_TO_CONTENT;
-  c->dlg_done.pszFooterIcon = TD_SHIELD_ICON;
-  c->dlg_done.pszFooter = MAKEINTRESOURCE(IDS_LICENSE);
   c->dlg_done.lpCallbackData = (LONG_PTR)c;
-  c->dlg_done.pfCallback = DlgDoneProc;
 
-  c->dlg_help.cbSize = sizeof c->dlg_help;
+  memcpy(&c->dlg_help, &kDlgHelpTemplate, sizeof c->dlg_help);
   c->dlg_help.hInstance = hInst;
-  c->dlg_help.pszWindowTitle = MAKEINTRESOURCE(IDS_APP_NAME_VER);
-  c->dlg_help.pszMainIcon = TD_INFORMATION_ICON;
-  c->dlg_help.pszMainInstruction = MAKEINTRESOURCE(IDS_HELP);
-  c->dlg_help.pszContent = MAKEINTRESOURCE(IDS_USAGE);
-  c->dlg_help.dwCommonButtons = TDCBF_CLOSE_BUTTON;
-  c->dlg_help.dwFlags = TDF_ENABLE_HYPERLINKS | TDF_ALLOW_DIALOG_CANCELLATION;
   c->dlg_help.lpCallbackData = (LONG_PTR)c;
-  c->dlg_help.pfCallback = DlgHelpProc;
+
+  c->btn_menu = LoadMenu(hInst, MAKEINTRESOURCE(IDR_BTN_MENU));
+  if (c->btn_menu == NULL)
+    return 0;
 
   c->argv = CommandLineToArgvW(GetCommandLine(), &c->argc);
   if (c->argv == NULL)
@@ -453,7 +538,7 @@ static int AppInit(FL_AppCtx *c, HINSTANCE hInst, allocator_t *alloc) {
 }
 
 static int AppRun(FL_AppCtx *c) {
-  if (GetAsyncKeyState(VK_SHIFT)) {
+  if (0 && GetAsyncKeyState(VK_SHIFT)) {
     ShortcutShow(&c->shortcut, NULL);
     return 0;
   }
@@ -478,7 +563,7 @@ int WINAPI _tWinMain(
     LPTSTR lpCmdLine,
     int nCmdShow) {
   int r = 0; // test_main();
-  if (r) 
+  if (r)
     return r;
 
   PerMonitorDpiHack();

@@ -22,5 +22,14 @@
 #define IDS_SHORTCUT_DEL_DIR_BG 38
 #define IDS_SHORTCUT_ADD_SENDTO 40
 #define IDS_SHORTCUT_DEL_SENDTO 42
+#define IDS_MENU 44
+
+// control id
+#define ID_BTN_MENU 101
+#define ID_BTN_RESCAN 102
+#define ID_BTN_HELP 103
+
+// menu
+#define IDR_BTN_MENU 1
 
 #endif

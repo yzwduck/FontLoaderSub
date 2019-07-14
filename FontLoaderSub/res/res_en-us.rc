@@ -22,9 +22,9 @@ STRINGTABLE
   IDS_WORK_LOAD "Load"
   IDS_WORK_UNLOAD "Unload"
   IDS_WORK_DONE "Done"
-  IDS_LICENSE "GPLv2: <A HREF=""https://github.com/yzwduck/FontLoaderSub"">github.com/yzwduck/FontLoaderSub</A>"
+  IDS_LICENSE "GPLv2: <A>github.com/yzwduck/FontLoaderSub</A>"
   IDS_HELP "Usage"
-  IDS_USAGE "1. Move EXE to font folder,\n2. Drop ass/ssa/folder onto EXE, or <A HREF="""">use shortcuts</A>,\n3. Hit ""Retry""?"
+  IDS_USAGE "1. Move EXE to font folder,\n2. Drop ass/ssa/folder onto EXE, or <A>use shortcuts</A>,\n3. Try ""Rebuild cache""?"
   IDS_MANAGE_SHORTCUT "Manage shortcuts"
   IDS_SHORTCUT_ERROR_ADD "Failed to create shortcut"
   IDS_SHORTCUT_ERROR_DEL "Failed to remove shortcut"
@@ -32,5 +32,17 @@ STRINGTABLE
   IDS_SHORTCUT_DEL_DIR_BG "Remove from directory background"
   IDS_SHORTCUT_ADD_SENDTO "Add to SendTo"
   IDS_SHORTCUT_DEL_SENDTO "Remove from SendTo"
+  IDS_MENU "&Menu"
 }
+
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+IDR_BTN_MENU MENU
+{
+  POPUP ""
+  {
+    MENUITEM "&Rebuild cache", ID_BTN_RESCAN
+    MENUITEM "&Help", ID_BTN_HELP
+  }
+}
+
 #endif
