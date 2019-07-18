@@ -1,5 +1,6 @@
 #include "cstl.h"
 #include "ass_string.h"
+#include "util.h"
 
 int vec_init(vec_t *v, size_t size, allocator_t *alloc) {
   *v = (vec_t){.size = size, .alloc = alloc};
@@ -44,9 +45,7 @@ int vec_append(vec_t *v, void *data, size_t n) {
   dst += v->n * v->size;
 
   v->n += n;
-  while (src != last) {
-    *dst++ = *src++;
-  }
+  zmemcpy(dst, src, n * v->size);
   return 1;
 }
 

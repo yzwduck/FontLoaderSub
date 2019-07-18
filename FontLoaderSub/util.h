@@ -56,3 +56,7 @@ int FlStrCmpIW(const wchar_t *a, const wchar_t *b);
 BOOL PerMonitorDpiHack();
 
 const TCHAR *ResLoadString(HMODULE hInstance, UINT idText);
+
+void *zmemset(void *dest, int ch, size_t count);
+
+void *zmemcpy(void *dest, const void *src, size_t count);

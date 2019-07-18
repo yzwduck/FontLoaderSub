@@ -22,7 +22,6 @@ STRINGTABLE
   IDS_WORK_LOAD "加载中"
   IDS_WORK_UNLOAD "卸载中"
   IDS_WORK_DONE "完成"
-  IDS_LICENSE "GPLv2: <A>github.com/yzwduck/FontLoaderSub</A>"
   IDS_HELP "使用方法"
   IDS_USAGE "1. 将本程序移动到字体文件夹；\n2. 把字幕或文件夹拖动到程序上，或用 <A>快捷方式</A>；\n3. 试试 ""更新缓存""？"
   IDS_MANAGE_SHORTCUT "管理快捷方式"

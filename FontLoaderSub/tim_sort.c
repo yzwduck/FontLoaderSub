@@ -1,4 +1,5 @@
 #include "tim_sort.h"
+#include "util.h"
 
 typedef struct {
   uint8_t *data;
@@ -28,12 +29,6 @@ static void select_sort(size_t low, size_t high, Sort_Ctx *ctx) {
   }
 }
 
-static void plz_rep_mov(uint8_t *dst, const uint8_t *src, size_t size) {
-  for (size_t i = 0; i != size; i++) {
-    dst[i] = src[i];
-  }
-}
-
 static void tim_sort_i(size_t low, size_t high, Sort_Ctx *ctx) {
   if (low + 4 > high) {
     select_sort(low, high, ctx);
@@ -51,24 +46,24 @@ static void tim_sort_i(size_t low, size_t high, Sort_Ctx *ctx) {
   uint8_t *p_mid = pb;
   uint8_t *p_high = &temp[high * size];
   uint8_t *pt = &data[low * size];
-  plz_rep_mov(pa, pt, size * (high - low));
+  zmemcpy(pa, pt, size * (high - low));
 
   while (pa != p_mid && pb != p_high) {
     if (ctx->comp(pa, pb, ctx->arg) <= 0) {
-      plz_rep_mov(pt, pa, size);
+      zmemcpy(pt, pa, size);
       pa += size;
     } else {
-      plz_rep_mov(pt, pb, size);
+      zmemcpy(pt, pb, size);
       pb += size;
     }
     pt += size;
   }
   while (pa != p_mid) {
-    plz_rep_mov(pt, pa, size);
+    zmemcpy(pt, pa, size);
     pt += size, pa += size;
   }
   while (pb != p_high) {
-    plz_rep_mov(pt, pb, size);
+    zmemcpy(pt, pb, size);
     pt += size, pb += size;
   }
 }

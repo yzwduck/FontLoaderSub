@@ -402,7 +402,7 @@ static const TASKDIALOGCONFIG kDlgDoneTemplate = {
     .dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_ENABLE_HYPERLINKS |
                TDF_SIZE_TO_CONTENT,
     .pszFooterIcon = TD_SHIELD_ICON,
-    .pszFooter = MAKEINTRESOURCE(IDS_LICENSE),
+    .pszFooter = L"GPLv2: <A>github.com/yzwduck/FontLoaderSub</A>",
     .pfCallback = DlgDoneProc,
     .cButtons = _countof(kDlgDoneButtons),
     .pButtons = kDlgDoneButtons,

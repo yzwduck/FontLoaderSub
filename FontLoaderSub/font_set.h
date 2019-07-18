@@ -10,12 +10,13 @@ typedef struct {
   uint32_t num_face;
 } FS_Stat;
 
-// format, in preference order
+// feel free to change its order (except for the last one)
 typedef enum {
-  FS_FmtNone = 0,  // least preferred
-  FS_FmtOTF = 1,
-  FS_FmtTTF = 2,
-  FS_FmtTTC = 3,  // most preferred
+  FS_FmtNone,  // least preferred
+  FS_FmtOTF,
+  FS_FmtTTF,
+  FS_FmtTTC,  // most preferred
+  FS_FmtMax   // number of formats
 } FS_Format;
 
 typedef struct {

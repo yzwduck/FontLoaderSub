@@ -7,12 +7,14 @@
 #include "path.h"
 #include "mock_config.h"
 #include "tim_sort.h"
+#include "util.h"
 
 #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
 
 int fl_init(FL_LoaderCtx *c, allocator_t *alloc) {
   int r = FL_OK;
-  *c = (FL_LoaderCtx){.alloc = alloc};
+  zmemset(c, 0, sizeof *c);
+  c->alloc = alloc;
 
   do {
     vec_init(&c->loaded_font, sizeof(FL_FontMatch), alloc);

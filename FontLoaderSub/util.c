@@ -1,6 +1,10 @@
 #include "util.h"
 #include <Windows.h>
 #include <Shlwapi.h>
+#include <intrin.h>
+
+#pragma intrinsic(__movsb)
+#pragma intrinsic(__stosb)
 
 int FlMemMap(const wchar_t *path, memmap_t *mmap) {
   mmap->map = NULL;
@@ -292,4 +296,14 @@ const TCHAR *ResLoadString(HMODULE hInstance, UINT idText) {
     textptr = L"";  // failback
   }
   return textptr;
+}
+
+void *zmemset(void *dest, int ch, size_t count) {
+  __stosb((unsigned char *)dest, (unsigned char)ch, count);
+  return dest;
+}
+
+void *zmemcpy(void *dest, const void *src, size_t count) {
+  __movsb((unsigned char *)dest, (const unsigned char *)src, count);
+  return dest;
 }

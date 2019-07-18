@@ -42,6 +42,12 @@ typedef struct {
 #define kTagError L"\t!!"
 #define kTagErrorLen (3)
 
+static const WCHAR kFsFmtTag[FS_FmtMax][4] = {  // format hack
+    [FS_FmtNone] = L"",
+    [FS_FmtOTF] = L"otf",
+    [FS_FmtTTF] = L"ttf",
+    [FS_FmtTTC] = L"ttc"};
+
 static void fs_format_tag_to_str(FS_Format fmt, WCHAR s[4]);
 
 static int fs_parser_name_cb(
@@ -228,39 +234,19 @@ static int fs_idx_comp(const void *pa, const void *pb, void *arg) {
 }
 
 static FS_Format fs_format_str_to_tag(const WCHAR s[4]) {
-  if (s[0] == L'o' && s[1] == L't' && s[2] == L'f' && s[3] == 0) {
-    return FS_FmtOTF;
-  }
-  if (s[0] == L't' && s[1] == L't' && s[2] == L'f' && s[3] == 0) {
-    return FS_FmtTTF;
-  }
-  if (s[0] == L't' && s[1] == L't' && s[2] == L'c' && s[3] == 0) {
-    return FS_FmtTTC;
+  for (int i = 0; i != FS_FmtMax; i++) {
+    if (ass_strncmp(s, kFsFmtTag[i], 4) == 0) {
+      return (FS_Format)i;
+    }
   }
   return FS_FmtNone;
 }
 
 static void fs_format_tag_to_str(FS_Format fmt, WCHAR s[4]) {
-  switch (fmt) {
-  case FS_FmtOTF:
-    s[0] = L'o';
-    s[1] = L't';
-    s[2] = L'f';
-    s[3] = 0;
-    break;
-  case FS_FmtTTF:
-    s[0] = L't';
-    s[1] = L't';
-    s[2] = L'f';
-    s[3] = 0;
-    break;
-  case FS_FmtTTC:
-    s[0] = L't';
-    s[1] = L't';
-    s[2] = L'c';
-    s[3] = 0;
-    break;
-  default:
+  int i = fmt;
+  if (FS_FmtNone <= i && i < FS_FmtMax) {
+    zmemcpy(s, kFsFmtTag[i], sizeof kFsFmtTag[i]);
+  } else {
     s[0] = 0;
   }
 }

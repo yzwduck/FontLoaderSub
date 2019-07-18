@@ -22,7 +22,6 @@ STRINGTABLE
   IDS_WORK_LOAD "Load"
   IDS_WORK_UNLOAD "Unload"
   IDS_WORK_DONE "Done"
-  IDS_LICENSE "GPLv2: <A>github.com/yzwduck/FontLoaderSub</A>"
   IDS_HELP "Usage"
   IDS_USAGE "1. Move EXE to font folder,\n2. Drop ass/ssa/folder onto EXE, or <A>use shortcuts</A>,\n3. Try ""Rebuild cache""?"
   IDS_MANAGE_SHORTCUT "Manage shortcuts"
