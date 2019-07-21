@@ -11,7 +11,7 @@
 LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
 STRINGTABLE
 {
-  IDS_APP_NAME_VER "FontLoaderSub r5-" FONTLOADERSUB_GIT_COMMIT
+  IDS_APP_NAME_VER "FontLoaderSub " FONTLOADERSUB_VERSIONTAG "-" FONTLOADERSUB_GIT_COMMIT
   IDS_SHELL_VERB "FontLoaderSub here"
   IDS_SENDTO "FontLoaderSub"
   IDS_LOAD_STAT "%1!i! loaded. %2!i! failed. %3!i! unmatched.\n%4!i! files. %5!i! fonts. %6!i! subs."
@@ -23,7 +23,7 @@ STRINGTABLE
   IDS_WORK_UNLOAD "Unload"
   IDS_WORK_DONE "Done"
   IDS_HELP "Usage"
-  IDS_USAGE "1. Move EXE to font folder,\n2. Drop ass/ssa/folder onto EXE, or <A>use shortcuts</A>,\n3. Try ""Rebuild cache""?"
+  IDS_USAGE "1. Move EXE to font folder,\n2. Drop ass/ssa/folder onto EXE, or <A>use shortcuts</A>,\n3. ""Rebuild cache"" if fonts are changed."
   IDS_MANAGE_SHORTCUT "Manage shortcuts"
   IDS_SHORTCUT_ERROR_ADD "Failed to create shortcut"
   IDS_SHORTCUT_ERROR_DEL "Failed to remove shortcut"

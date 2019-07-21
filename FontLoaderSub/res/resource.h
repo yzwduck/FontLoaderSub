@@ -1,6 +1,7 @@
 #ifndef RESOURCE_H
 #define RESOURCE_H
 
+#define FONTLOADERSUB_VERSIONTAG "r5"
 #ifndef FONTLOADERSUB_GIT_COMMIT
 #define FONTLOADERSUB_GIT_COMMIT "unknown"
 #endif

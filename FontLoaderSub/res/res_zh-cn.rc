@@ -11,7 +11,7 @@
 LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED
 STRINGTABLE
 {
-  IDS_APP_NAME_VER "FontLoaderSub r5-" FONTLOADERSUB_GIT_COMMIT
+  IDS_APP_NAME_VER "FontLoaderSub " FONTLOADERSUB_VERSIONTAG "-" FONTLOADERSUB_GIT_COMMIT
   IDS_SHELL_VERB "加载字幕所需字体"
   IDS_SENDTO "FontLoaderSub"
   IDS_LOAD_STAT "%1!i! 个字体加载成功，%2!i! 个出错，%3!i! 个无匹配。\n缓存包含 %4!i! 个字体，%5!i! 种名称；当前共 %6!i! 个字幕。"
@@ -23,14 +23,14 @@ STRINGTABLE
   IDS_WORK_UNLOAD "卸载中"
   IDS_WORK_DONE "完成"
   IDS_HELP "使用方法"
-  IDS_USAGE "1. 将本程序移动到字体文件夹；\n2. 把字幕或文件夹拖动到程序上，或用 <A>快捷方式</A>；\n3. 试试 ""更新缓存""？"
+  IDS_USAGE "1. 将本程序移动到字体文件夹；\n2. 把字幕或文件夹拖动到程序上，或用 <A>快捷方式</A>；\n3. 字体库变更后请 ""更新缓存""。"
   IDS_MANAGE_SHORTCUT "管理快捷方式"
   IDS_SHORTCUT_ERROR_ADD "创建快捷方式时出错"
   IDS_SHORTCUT_ERROR_DEL "移除快捷方式时出错"
-  IDS_SHORTCUT_ADD_DIR_BG "文件夹空白处右键菜单\n创建"
-  IDS_SHORTCUT_DEL_DIR_BG "文件夹空白处右键菜单\n移除"
-  IDS_SHORTCUT_ADD_SENDTO "发送到\n创建"
-  IDS_SHORTCUT_DEL_SENDTO "发送到\n移除"
+  IDS_SHORTCUT_ADD_DIR_BG "在 文件夹空白处右键菜单 创建"
+  IDS_SHORTCUT_DEL_DIR_BG "从 文件夹空白处右键菜单 移除"
+  IDS_SHORTCUT_ADD_SENDTO "在 发送到 创建"
+  IDS_SHORTCUT_DEL_SENDTO "从 发送到 移除"
   IDS_MENU "菜单(&M)"
 }
 
