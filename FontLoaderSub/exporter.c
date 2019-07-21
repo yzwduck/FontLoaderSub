@@ -15,19 +15,18 @@ typedef struct LoadedFontEnumCtx {
   FL_AppCtx *app;
   IShellItem *root;
   size_t i;
-  ULONG ref;
+  ULONG volatile ref;
 } LoadedFontEnumCtx;
+
+static ULONG STDMETHODCALLTYPE LFEC_AddRef(IEnumShellItems *This);
 
 static HRESULT STDMETHODCALLTYPE
 LFEC_QueryInterface(IEnumShellItems *This, REFIID riid, void **out) {
   LoadedFontEnumCtx *c = (LoadedFontEnumCtx *)This;
   REFIID unk = &IID_IUnknown;
   REFIID esi = &IID_IEnumShellItems;
-  if (IsEqualGUID(riid, unk)) {
-    *out = (void *)c;
-    return S_OK;
-  } else if (IsEqualGUID(riid, esi)) {
-    c->ref++;
+  if (IsEqualGUID(riid, unk) || IsEqualGUID(riid, esi)) {
+    LFEC_AddRef(This);
     *out = (void *)c;
     return S_OK;
   } else {
@@ -37,12 +36,12 @@ LFEC_QueryInterface(IEnumShellItems *This, REFIID riid, void **out) {
 
 static ULONG STDMETHODCALLTYPE LFEC_AddRef(IEnumShellItems *This) {
   LoadedFontEnumCtx *c = (LoadedFontEnumCtx *)This;
-  return ++c->ref;
+  return InterlockedIncrement(&c->ref);
 }
 
 static ULONG STDMETHODCALLTYPE LFEC_Release(IEnumShellItems *This) {
   LoadedFontEnumCtx *c = (LoadedFontEnumCtx *)This;
-  ULONG ret = --c->ref;
+  ULONG ret = InterlockedDecrement(&c->ref);
   if (ret == 0) {
     c->root->lpVtbl->Release(c->root);
     c->app->alloc->alloc(c, 0, c->app->alloc->arg);
@@ -180,7 +179,7 @@ int ExportLoadedFonts(HWND hWnd, FL_AppCtx *c) {
   HRESULT hr;
   IFileDialog *pfd = NULL;
   FILEOPENDIALOGOPTIONS options;
-  IShellItem *result = NULL;
+  IShellItem *dest = NULL;
   IEnumShellItems *font_enum = NULL;
   LPWSTR path_name = NULL;
   IFileOperation *file_opt = NULL;
@@ -205,11 +204,11 @@ int ExportLoadedFonts(HWND hWnd, FL_AppCtx *c) {
       break;
     } else if (FAILED(hr))
       break;
-    hr = pfd->lpVtbl->GetResult(pfd, &result);
+    hr = pfd->lpVtbl->GetResult(pfd, &dest);
     if (FAILED(hr))
       break;
     SIGDN dn = SIGDN_FILESYSPATH;
-    hr = result->lpVtbl->GetDisplayName(result, dn, &path_name);
+    hr = dest->lpVtbl->GetDisplayName(dest, dn, &path_name);
     if (FAILED(hr))
       break;
 
@@ -225,7 +224,7 @@ int ExportLoadedFonts(HWND hWnd, FL_AppCtx *c) {
     hr = file_opt->lpVtbl->SetOwnerWindow(file_opt, hWnd);
     if (FAILED(hr))
       break;
-    hr = file_opt->lpVtbl->CopyItems(file_opt, (IUnknown *)font_enum, result);
+    hr = file_opt->lpVtbl->CopyItems(file_opt, (IUnknown *)font_enum, dest);
     if (FAILED(hr))
       break;
     hr = file_opt->lpVtbl->PerformOperations(file_opt);
@@ -237,7 +236,7 @@ int ExportLoadedFonts(HWND hWnd, FL_AppCtx *c) {
   } while (0);
 
   C_SAVE_RELEASE(pfd);
-  C_SAVE_RELEASE(result);
+  C_SAVE_RELEASE(dest);
   C_SAVE_RELEASE(font_enum);
   C_SAVE_RELEASE(file_opt);
   CoTaskMemFree(path_name);
