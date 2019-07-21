@@ -4,29 +4,21 @@ clone_depth: 5
 
 install:
 - ps: |
-    $env:COMM_TAG = $(git describe --always)
+    $env:COMM_TAG = $(git describe --always --dirty="(X)")
     $env:PROJECT = "FontLoaderSub"
-    $env:BUILD = "{0}-{1}" -f $env:PROJECT, $env:COMM_TAG
-    $env:COMMIT_HASH = $(git rev-parse --short=7 HEAD)
-    $env:CMDLINE_DEFINE = "FONTLOADERSUB_GIT_COMMIT=\""{0}\""" -f $env:COMMIT_HASH
-    curl.exe -fsSL -o upx-3.95-win32.zip "https://github.com/upx/upx/releases/download/v3.95/upx-3.95-win32.zip"
-    7z x upx-3.95-win32.zip
-    Remove-Item -Path upx-3.95-win32.zip -Force
+    $env:CMDLINE_DEFINE = "FONTLOADERSUB_GIT_VERSION=\""{0}\""" -f $env:COMM_TAG
 
 build_script:
 - msbuild /p:Platform=x86 /p:Configuration=Minimize
+- msbuild /p:Platform=x64 /p:Configuration=Minimize
 
 after_build:
 - ps: |
-    New-Item -ItemType directory -Path UPX
-    .\upx-3.95-win32\upx.exe -o "UPX\$env:PROJECT.exe" "Minimize\Win32\$env:PROJECT.exe"
-
     $CONFIGS = @(
         "Minimize";
-        "UPX";
     )
     foreach ($conf in $CONFIGS) {
-        7z a "$env:BUILD-$conf.zip" "$conf\" "-xr!*.iobj" "-xr!*.ipdb"
+        7z a "$env:PROJECT-$env:COMM_TAG-$conf.zip" "$conf\" "-xr!*.iobj" "-xr!*.ipdb"
     }
 
     Get-ChildItem . -Recurse | where {$_.Extension -eq ".exe"} | Get-FileHash -Algorithm SHA256
