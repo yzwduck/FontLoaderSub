@@ -1,7 +1,5 @@
 image: Visual Studio 2017
 
-clone_depth: 5
-
 install:
 - ps: |
     $env:COMM_TAG = $(git describe --always --dirty="(X)")
@@ -10,7 +8,6 @@ install:
 
 build_script:
 - msbuild /p:Platform=x86 /p:Configuration=Minimize
-- msbuild /p:Platform=x64 /p:Configuration=Minimize
 
 after_build:
 - ps: |
