@@ -262,6 +262,7 @@
       <Culture Condition="'$(Configuration)|$(Platform)'=='Minimize|x64'">0x0804</Culture>
       <Culture Condition="'$(Configuration)|$(Platform)'=='Release|x64'">0x0804</Culture>
     </ResourceCompile>
+    <ResourceCompile Include="res\res_zh-tw.rc" />
   </ItemGroup>
   <ItemGroup>
     <Manifest Include="res\app.manifest" />

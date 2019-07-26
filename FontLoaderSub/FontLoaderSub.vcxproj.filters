@@ -24,6 +24,9 @@
     <ResourceCompile Include="res\res_zh-cn.rc">
       <Filter>Resource Files</Filter>
     </ResourceCompile>
+    <ResourceCompile Include="res\res_zh-tw.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
     <Manifest Include="res\app.manifest">

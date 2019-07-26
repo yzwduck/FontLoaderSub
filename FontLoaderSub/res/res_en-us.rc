@@ -23,7 +23,7 @@ STRINGTABLE
   IDS_WORK_UNLOAD "Unload"
   IDS_WORK_DONE "Done"
   IDS_HELP "Usage"
-  IDS_USAGE "1. Move EXE to font folder,\n2. Drop ass/ssa/folder onto EXE, or <A>use shortcuts</A>,\n3. ""Rebuild cache"" if fonts are changed."
+  IDS_USAGE "1. Move EXE to font folder,\n2. Drop ass/ssa/folder onto EXE, or <A>use shortcuts</A>,\n3. ""Rebuild index"" if fonts are changed."
   IDS_MANAGE_SHORTCUT "Manage shortcuts"
   IDS_SHORTCUT_ERROR_ADD "Failed to create shortcut"
   IDS_SHORTCUT_ERROR_DEL "Failed to remove shortcut"
@@ -39,7 +39,7 @@ IDR_BTN_MENU MENU
 {
   POPUP ""
   {
-    MENUITEM "&Rebuild cache", ID_BTN_RESCAN
+    MENUITEM "&Rebuild index", ID_BTN_RESCAN
     MENUITEM "&Export fonts", ID_BTN_EXPORT
     MENUITEM SEPARATOR
     MENUITEM "&Help", ID_BTN_HELP
