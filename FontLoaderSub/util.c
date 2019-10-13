@@ -57,7 +57,7 @@ static int FlTestUtf8(const uint8_t *buffer, size_t size) {
       }
     } else if ((*p & 0x80) == 0) {
       // rem = 0;
-    } else if ((*p & 0xd0) == 0xc0) {
+    } else if ((*p & 0xe0) == 0xc0) {
       // 110xxxxx
       rem = 1;
     } else if ((*p & 0xf0) == 0xe0) {
