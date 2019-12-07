@@ -30,7 +30,8 @@ typedef struct {
 
 static void fire_font_cb(ASS_Track *track, ASS_Range *font) {
   if (track->callback) {
-    track->callback(font->begin, font->end - font->begin, track->cb_arg);
+    const wchar_t *begin = ass_skip_spaces(font->begin, font->end);
+    track->callback(begin, font->end - begin, track->cb_arg);
   }
 }
 
