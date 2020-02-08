@@ -45,7 +45,11 @@ int fl_cancel(FL_LoaderCtx *c);
 
 int fl_add_subs(FL_LoaderCtx *c, const wchar_t *path);
 
-int fl_scan_fonts(FL_LoaderCtx *c, const wchar_t *path, const wchar_t *cache);
+int fl_scan_fonts(
+    FL_LoaderCtx *c,
+    const wchar_t *path,
+    const wchar_t *cache,
+    const wchar_t *black);
 
 int fl_save_cache(FL_LoaderCtx *c, const wchar_t *cache);
 

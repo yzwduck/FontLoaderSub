@@ -53,7 +53,7 @@ int ass_strncasecmp(const wchar_t *s1, const wchar_t *s2, size_t cch) {
 
   do {
     a = ass_to_lower(*s1++);
-    b = *s2++;
+    b = ass_to_lower(*s2++);
   } while (s2 != last && a && a == b);
 
   return a - b;

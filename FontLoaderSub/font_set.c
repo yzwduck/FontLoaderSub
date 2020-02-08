@@ -15,6 +15,7 @@
 struct _FS_Set {
   allocator_t *alloc;
   str_db_t db;
+  str_db_t blacklist;
   FS_Stat stat;
   FS_Index *index;
   memmap_t map;
@@ -113,6 +114,7 @@ int fs_create(allocator_t *alloc, FS_Set **out) {
     if (!p)
       break;
     str_db_init(&p->db, alloc, '\n', 2);
+    str_db_init(&p->blacklist, alloc, 0, 1);
 
     p->alloc = alloc;
     ok = 1;
@@ -130,6 +132,7 @@ int fs_free(FS_Set *s) {
   if (s) {
     allocator_t *alloc = s->alloc;
     str_db_free(&s->db);
+    str_db_free(&s->blacklist);
     FlMemUnmap(&s->map);
     alloc->alloc(s, 0, alloc->arg);
   }
@@ -359,22 +362,32 @@ int fs_iter_new(FS_Set *s, const wchar_t *face, FS_Iter *it) {
       }
     }
   }
-  if (a != b || a != m) {
-    // *it = (FS_Iter){0};
-    it->set = NULL;
-    it->query_id = 0;
-    it->index_id = 0;
-    return 0;
-  } else {
-    // found, skip to first match
+
+  do {
+    if (!(a == b && a == m)) {
+      break;
+    }
+    // found by fontface, skip to first match
     while (m > 0 && FlStrCmpIW(face, s->index[m - 1].face) == 0) {
       m--;
     }
-    // result = m
+    // enforce blacklist
+    while (m != s->stat.num_face && fs_blacklist_match(s, s->index[m].tag)) {
+      m++;
+    }
+    if (m == s->stat.num_face) {
+      break;
+    }
     *it =
         (FS_Iter){.set = s, .query_id = m, .index_id = m, .info = s->index[m]};
     return 1;
-  }
+  } while ((0));
+
+  // *it = (FS_Iter){0};
+  it->set = NULL;
+  it->query_id = 0;
+  it->index_id = 0;
+  return 0;
 }
 
 static size_t str_cmp_x(const wchar_t *a, const wchar_t *b) {
@@ -422,6 +435,10 @@ int fs_iter_next(FS_Iter *it) {
       const size_t dv = str_cmp_x(ver, got_ver);
       if (ver[dv] != 0 || got_ver[dv] != 0)
         break;
+    }
+
+    if (fs_blacklist_match(s, s->index[it->index_id].tag)) {
+      continue;
     }
 
     // match found
@@ -511,4 +528,33 @@ int fs_cache_dump(FS_Set *s, const wchar_t *path) {
 
   CloseHandle(h);
   return ok ? FL_OK : FL_OS_ERROR;
+}
+
+int fs_blacklist_clear(FS_Set *s) {
+  str_db_seek(&s->blacklist, 0);
+  return 0;
+}
+
+int fs_blacklist_add(FS_Set *s, const wchar_t *path, size_t cch) {
+  const wchar_t *ret = str_db_push_u16_le(&s->blacklist, path, cch);
+  return ret == NULL;
+}
+
+int fs_blacklist_match(FS_Set *s, const wchar_t *path) {
+  size_t pos_it = 0;
+  const size_t len_path = ass_strlen(path);
+  const wchar_t *suffix;
+  while ((suffix = str_db_next(&s->blacklist, &pos_it)) != NULL) {
+    const size_t len_suffix = ass_strlen(suffix);
+    if (len_suffix > len_path) {
+      continue;
+    }
+    const wchar_t *path_sfx = path + len_path - len_suffix;
+    if (ass_strncasecmp(path_sfx, suffix, len_suffix) == 0) {
+      if (len_path == len_suffix || path_sfx[-1] == '\\') {
+        return 1;
+      }
+    }
+  }
+  return 0;
 }

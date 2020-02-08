@@ -52,3 +52,9 @@ int fs_iter_next(FS_Iter *it);
 int fs_cache_load(const wchar_t *path, allocator_t *alloc, FS_Set **out);
 
 int fs_cache_dump(FS_Set *s, const wchar_t *path);
+
+int fs_blacklist_clear(FS_Set *s);
+
+int fs_blacklist_add(FS_Set *s, const wchar_t *path, size_t cch);
+
+int fs_blacklist_match(FS_Set *S, const wchar_t *path);

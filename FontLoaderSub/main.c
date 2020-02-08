@@ -9,6 +9,7 @@
 #include "res/resource.h"
 
 #define kCacheFile L"fc-subs.db"
+#define kBlackFile L"fc-ignore.txt"
 
 static void *mem_realloc(void *existing, size_t size, void *arg) {
   HANDLE heap = (HANDLE)arg;
@@ -118,7 +119,7 @@ static DWORD WINAPI AppWorker(LPVOID param) {
       break;
     }
     case APP_LOAD_CACHE: {
-      fl_scan_fonts(&c->loader, c->font_path, kCacheFile);
+      fl_scan_fonts(&c->loader, c->font_path, kCacheFile, kBlackFile);
       FS_Stat stat = {0};
       fs_stat(c->loader.font_set, &stat);
       if (stat.num_face == 0) {
@@ -129,7 +130,7 @@ static DWORD WINAPI AppWorker(LPVOID param) {
       break;
     }
     case APP_SCAN_FONT: {
-      if (fl_scan_fonts(&c->loader, c->font_path, NULL) == FL_OK) {
+      if (fl_scan_fonts(&c->loader, c->font_path, NULL, kBlackFile) == FL_OK) {
         fl_save_cache(&c->loader, kCacheFile);
       }
       c->app_state = APP_LOAD_FONT;

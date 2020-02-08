@@ -183,7 +183,58 @@ fl_walk_font_callback(const wchar_t *path, WIN32_FIND_DATA *data, void *arg) {
   return FL_OK;
 }
 
-int fl_scan_fonts(FL_LoaderCtx *c, const wchar_t *path, const wchar_t *cache) {
+static void
+fl_blacklist_parse(FL_LoaderCtx *c, const wchar_t *data, size_t cch) {
+  const wchar_t *p = data;
+  const wchar_t *eos = data + cch;
+  while (p != eos) {
+    // skip blank lines
+    while (p != eos && ass_is_eol(*p))
+      ++p;
+    // find end of the line
+    const wchar_t *q = p;
+    while (q != eos && !ass_is_eol(*q))
+      ++q;
+
+    fs_blacklist_add(c->font_set, p, q - p);
+    p = q;
+  }
+}
+
+static void fl_blacklist_load(FL_LoaderCtx *c, const wchar_t *filename) {
+  fs_blacklist_clear(c->font_set);
+  if (!filename) {
+    return;
+  }
+  str_db_seek(&c->walk_path, 0);
+  if (!str_db_push_u16_le(&c->walk_path, str_db_get(&c->font_path, 0), 0) ||
+      !str_db_push_u16_le(&c->walk_path, L"\\", 1) ||
+      !str_db_push_u16_le(&c->walk_path, filename, 0)) {
+    return;
+  }
+  memmap_t map;
+  wchar_t *content = NULL;
+  size_t cch = 0;
+  do {
+    FlMemMap(str_db_get(&c->walk_path, 0), &map);
+    if (!map.data)
+      break;
+    content = FlTextDecode(map.data, map.size, &cch, c->alloc);
+    if (content == NULL)
+      break;
+    fl_blacklist_parse(c, content, cch);
+
+  } while ((0));
+
+  FlMemUnmap(&map);
+  c->alloc->alloc(content, 0, c->alloc->arg);
+}
+
+int fl_scan_fonts(
+    FL_LoaderCtx *c,
+    const wchar_t *path,
+    const wchar_t *cache,
+    const wchar_t *black) {
   // caller: fl_unload_fonts
 
   // free previous font set
@@ -237,6 +288,7 @@ int fl_scan_fonts(FL_LoaderCtx *c, const wchar_t *path, const wchar_t *cache) {
   }
   if (r == FL_OK) {
     r = fs_build_index(c->font_set);
+    fl_blacklist_load(c, black);
   }
 
   // failed
