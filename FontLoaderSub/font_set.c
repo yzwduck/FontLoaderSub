@@ -341,8 +341,8 @@ int fs_build_index(FS_Set *s) {
 int fs_iter_new(FS_Set *s, const wchar_t *face, FS_Iter *it) {
   if (s == NULL || s->index == NULL || it == NULL)
     return 0;
-  uint32_t a = 0, b = s->stat.num_face - 1;
-  uint32_t m = 0;
+  int a = 0, b = s->stat.num_face - 1;
+  int m = 0;
   if (s->index != NULL && s->stat.num_face != 0) {
     while (a <= b) {
       m = a + (b - a) / 2;
