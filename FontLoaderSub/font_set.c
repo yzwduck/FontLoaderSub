@@ -422,19 +422,19 @@ int fs_iter_next(FS_Iter *it) {
 
     // check format
     if (fmt != got_fmt) {
-      break;
+      continue;
     }
 
     // check version
     if (ver == NULL) {
       if (got_ver != NULL)
-        break;
+        continue;
     } else {
       if (got_ver == NULL)
-        break;
+        continue;
       const size_t dv = str_cmp_x(ver, got_ver);
       if (ver[dv] != 0 || got_ver[dv] != 0)
-        break;
+        continue;
     }
 
     if (fs_blacklist_match(s, s->index[it->index_id].tag)) {
